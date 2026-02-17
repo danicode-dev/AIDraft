@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "db:seed": "npx tsx prisma/seed.ts",
@@ -17,12 +17,10 @@
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
     "@google/generative-ai": "^0.24.1",
-    "@prisma/adapter-better-sqlite3": "^7.2.0",
     "@prisma/client": "^6.19.1",
     "@types/adm-zip": "^0.5.7",
     "adm-zip": "^0.5.16",
     "bcrypt": "^6.0.0",
-    "better-sqlite3": "^12.6.0",
     "docx": "^9.5.1",
     "dotenv": "^17.2.3",
     "groq-sdk": "^0.37.0",
@@ -42,7 +40,6 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/bcrypt": "^6.0.0",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/pdf-parse": "^1.1.5",
     "@types/react": "^19",
