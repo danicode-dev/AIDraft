@@ -86,3 +86,10 @@ Puedes ejecutar este proyecto en tu máquina local para desarrollo o pruebas:
     npm run dev
     ```
     Accede a `http://localhost:3000`.
+
+## Autor
+
+**Diseñado y desarrollado por Daniel García** 👨‍💻  
+Si te ha gustado, no olvides darle una ⭐️ al repositorio.
+
+[GitHub](https://github.com/danicode-dev) | [LinkedIn](https://www.linkedin.com/in/daniel-garcia-dev/)
