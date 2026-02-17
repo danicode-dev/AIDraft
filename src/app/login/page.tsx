@@ -112,6 +112,35 @@ export default function LoginPage() {
                                 "Entrar"
                             )}
                         </button>
+
+                        <div className="relative my-6">
+                            <div className="absolute inset-0 flex items-center">
+                                <div className="w-full border-t border-gray-200 dark:border-slate-700"></div>
+                            </div>
+                            <div className="relative flex justify-center text-sm">
+                                <span className="px-2 bg-white dark:bg-slate-800 text-gray-500">O prueba sin cuenta</span>
+                            </div>
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={() => {
+                                startTransition(async () => {
+                                    await signIn("credentials", {
+                                        email: "admin@docututor.com",
+                                        password: "admin123",
+                                        redirect: false,
+                                    });
+                                    router.push("/app/upload");
+                                    router.refresh();
+                                });
+                            }}
+                            disabled={isPending}
+                            className="w-full bg-white dark:bg-slate-700 hover:bg-gray-50 dark:hover:bg-slate-600 text-[var(--primary)] dark:text-white font-semibold py-3.5 px-6 rounded-xl border-2 border-[var(--primary)] dark:border-slate-500 shadow-sm active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                            <span className="material-symbols-outlined">rocket_launch</span>
+                            Probar Demo (Invitado)
+                        </button>
                     </form>
                 </div>
 
