@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 
-type Template = "FOC" | "GENERIC";
+type Template = "FOC" | "CUSTOM";
 
 interface ParseResult {
     text: string;
@@ -73,7 +73,6 @@ export default function UploadPage() {
                 parseRes = await fetch("/api/parse", {
                     method: "POST",
                     body: formData,
-                    // Browser sets boundary automatically needed for multipart
                 });
             }
             // Mode: TEXT
@@ -121,217 +120,267 @@ export default function UploadPage() {
         }
     };
 
+    const statusText = inputMode ? "Listo para procesar" : "Esperando contenido...";
+    const statusColor = inputMode ? "bg-green-500" : "bg-yellow-400";
+
     return (
-        <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
-            {/* Intro */}
-            <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
-                Sube tu enunciado en PDF, Word o texto, elige la plantilla y genera un borrador automáticamente.
-            </p>
+        <div className="flex-grow w-full overflow-y-auto pb-24">
+            <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-6 md:py-8">
+                {/* Header */}
+                <header className="mb-8 text-center md:text-left">
+                    <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">Generador de Borradores</h1>
+                    <p className="text-gray-500 max-w-2xl text-sm">
+                        Sube tu enunciado en PDF, Word o texto, elige la plantilla y genera un borrador automaticamente con IA.
+                    </p>
+                </header>
 
-            {/* Section 1: File Upload */}
-            <section className="space-y-3">
-                <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-200 flex items-center gap-2">
-                    <span className="flex items-center justify-center w-6 h-6 rounded-full bg-[#004785] text-white text-xs font-bold">1</span>
-                    Subir Enunciado
-                </h2>
+                {/* Bento Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
 
+                    {/* === Left Column: Upload === */}
+                    <div className="col-span-1 md:col-span-7 flex flex-col gap-6">
+                        {/* Step 1 header */}
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-[var(--primary)] text-white flex items-center justify-center font-bold text-sm shadow-lg">1</div>
+                            <h2 className="font-semibold text-gray-800 text-lg">Subir Enunciado</h2>
+                        </div>
 
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* LEFT: DROPZONE */}
-                    <div
-                        className={`relative group cursor-pointer border-2 border-dashed rounded-2xl h-60 flex flex-col items-center justify-center transition-all ${inputMode === "file" && file
-                            ? "border-green-400 bg-green-50 dark:bg-green-900/20"
-                            : "border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-slate-700"
-                            }`}
-                        onDrop={handleDrop}
-                        onDragOver={(e) => e.preventDefault()}
-                        onClick={() => fileInputRef.current?.click()}
-                    >
-                        <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept=".pdf,.docx,.doc,.txt"
-                            onChange={handleFileChange}
-                            className="hidden"
-                        />
-                        {inputMode === "file" && file ? (
-                            <>
-                                <div className="w-14 h-14 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-3">
-                                    <svg className="w-7 h-7 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                    </svg>
+                        {/* Dropzone */}
+                        <div
+                            className={`w-full border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center cursor-pointer transition-all duration-300 group h-64 relative overflow-hidden ${inputMode === "file" && file
+                                ? "border-green-400 bg-green-50"
+                                : "border-gray-300 bg-white hover:border-[var(--primary)] hover:bg-blue-50/30"
+                                }`}
+                            onDrop={handleDrop}
+                            onDragOver={(e) => e.preventDefault()}
+                            onClick={() => fileInputRef.current?.click()}
+                        >
+                            {/* Hover background overlay */}
+                            {!(inputMode === "file" && file) && (
+                                <div className="absolute inset-0 bg-blue-50 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            )}
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept=".pdf,.txt"
+                                onChange={handleFileChange}
+                                className="hidden"
+                            />
+                            {inputMode === "file" && file ? (
+                                <div className="relative z-10 flex flex-col items-center">
+                                    <div className="w-16 h-16 bg-green-100 rounded-2xl flex items-center justify-center mb-4 shadow-sm">
+                                        <span className="material-symbols-outlined text-green-600 text-3xl">check_circle</span>
+                                    </div>
+                                    <h3 className="font-bold text-gray-800 text-lg mb-1">{file.name}</h3>
+                                    <p className="text-sm text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setFile(null);
+                                            setInputMode(null);
+                                        }}
+                                        className="mt-3 text-xs text-red-500 hover:underline font-medium"
+                                    >
+                                        Quitar archivo
+                                    </button>
                                 </div>
-                                <p className="font-medium text-gray-900 dark:text-white text-sm px-2 text-center break-words max-w-full">
-                                    {file.name}
-                                </p>
-                                <p className="text-xs text-gray-500 mt-1">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        setFile(null);
-                                        setInputMode(null);
-                                    }}
-                                    className="mt-3 text-xs text-red-500 hover:underline"
-                                >
-                                    Quitar archivo
-                                </button>
-                            </>
-                        ) : (
-                            <>
-                                <div className="w-14 h-14 rounded-full bg-blue-50 dark:bg-slate-700 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                                    <svg className="w-7 h-7 text-[#004785] dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                                    </svg>
+                            ) : (
+                                <div className="relative z-10 flex flex-col items-center">
+                                    <div className="w-16 h-16 bg-blue-100 text-[var(--primary)] rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                                        <span className="material-symbols-outlined text-3xl">cloud_upload</span>
+                                    </div>
+                                    <h3 className="text-lg font-bold text-gray-800 mb-1">Arrastra o selecciona</h3>
+                                    <p className="text-sm text-gray-500">Soporta archivos PDF o TXT</p>
                                 </div>
-                                <p className="font-medium text-gray-900 dark:text-white text-sm">Arrastra o selecciona</p>
-                                <p className="text-xs text-gray-400 mt-1">PDF, Word o TXT</p>
-                            </>
-                        )}
-                    </div>
-
-                    {/* RIGHT: TEXT AREA */}
-                    <div className={`relative rounded-2xl border-2 transition-all h-60 flex flex-col ${inputMode === "text"
-                        ? "border-[#004785] bg-white dark:bg-slate-800 ring-2 ring-blue-100 dark:ring-blue-900/20"
-                        : "border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/50"
-                        }`}>
-                        <div className="absolute top-3 right-3 z-10">
-                            {inputMode === "text" && (
-                                <button
-                                    onClick={() => {
-                                        setRawText("");
-                                        setInputMode(null);
-                                    }}
-                                    className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded hover:bg-red-200 transition-colors"
-                                >
-                                    Limpiar
-                                </button>
                             )}
                         </div>
-                        <textarea
-                            value={rawText}
-                            onChange={handleTextChange}
-                            placeholder="O pega aquí tu enunciado o preguntas directamente..."
-                            className="w-full h-full bg-transparent p-4 resize-none outline-none text-sm text-gray-700 dark:text-gray-300 placeholder:text-gray-400"
-                        />
-                        {/* Character count / status */}
-                        <div className="absolute bottom-3 right-3 text-[10px] text-gray-400">
-                            {rawText.length} caracteres
-                        </div>
-                    </div>
-                </div>
-            </section>
 
-            {/* Section 2: Template Selection */}
-            <section className="space-y-3">
-                <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-200 flex items-center gap-2">
-                    <span className="flex items-center justify-center w-6 h-6 rounded-full bg-[#004785] text-white text-xs font-bold">2</span>
-                    Seleccionar Plantilla
-                </h2>
-
-                {/* FOC Template */}
-                <div
-                    onClick={() => setSelectedTemplate("FOC")}
-                    className={`relative cursor-pointer rounded-2xl border-2 overflow-hidden transition-all ${selectedTemplate === "FOC"
-                        ? "border-[#004785] shadow-lg"
-                        : "border-gray-200 dark:border-slate-700 hover:border-gray-300"
-                        }`}
-                >
-                    {selectedTemplate === "FOC" && (
-                        <div className="absolute -top-1 -right-1 w-7 h-7 bg-green-500 rounded-full flex items-center justify-center text-white shadow-lg z-10 border-2 border-white dark:border-slate-800">
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                        </div>
-                    )}
-
-                    {/* Mini doc preview */}
-                    <div className="h-28 bg-gray-100 dark:bg-slate-700 flex items-center justify-center">
-                        <div className="w-2/3 h-full bg-white shadow-md pt-4 px-3 flex flex-col gap-2">
-                            <div className="w-6 h-6 rounded-full border border-blue-900/20 flex items-center justify-center bg-blue-50">
-                                <span className="text-[6px] font-black text-blue-900">FOC</span>
+                        {/* Text area card */}
+                        <div className={`bg-white rounded-2xl shadow-soft p-6 border transition-all flex-grow flex flex-col ${inputMode === "text"
+                            ? "border-[var(--primary)] ring-2 ring-[var(--accent-blue-light)]"
+                            : "border-gray-100"
+                            }`}>
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-2">
+                                    <span className="material-symbols-outlined text-gray-400 text-xl">content_paste</span>
+                                    <h3 className="font-semibold text-gray-700">O pega tu texto aqui</h3>
+                                </div>
+                                {inputMode === "text" && (
+                                    <button
+                                        onClick={() => {
+                                            setRawText("");
+                                            setInputMode(null);
+                                        }}
+                                        className="text-xs font-medium text-[var(--primary)] hover:underline"
+                                    >
+                                        Limpiar
+                                    </button>
+                                )}
                             </div>
-                            <div className="h-1.5 w-1/2 bg-blue-900/80 rounded-sm"></div>
-                            <div className="h-1.5 w-3/4 bg-blue-900/40 rounded-sm"></div>
+                            <textarea
+                                value={rawText}
+                                onChange={handleTextChange}
+                                className="w-full flex-grow bg-transparent border-none resize-none focus:ring-0 text-gray-600 text-sm placeholder-gray-400 outline-none min-h-[100px]"
+                                placeholder="Pega el contenido del enunciado aqui para visualizarlo..."
+                            />
+                            <div className="flex justify-between items-center mt-4 pt-4 border-t border-gray-100">
+                                <span className="text-xs text-gray-400">{rawText.length} caracteres</span>
+                                <div className="flex gap-2">
+                                    <button className="p-1.5 hover:bg-gray-100 rounded text-gray-400 transition-colors">
+                                        <span className="material-symbols-outlined text-sm">format_bold</span>
+                                    </button>
+                                    <button className="p-1.5 hover:bg-gray-100 rounded text-gray-400 transition-colors">
+                                        <span className="material-symbols-outlined text-sm">format_italic</span>
+                                    </button>
+                                    <button className="p-1.5 hover:bg-gray-100 rounded text-gray-400 transition-colors">
+                                        <span className="material-symbols-outlined text-sm">grid_view</span>
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    <div className="p-4 bg-white dark:bg-slate-800">
-                        <div className="flex items-center gap-2 mb-1">
-                            <h3 className="font-bold text-gray-900 dark:text-white text-sm">Instituto FOC</h3>
-                            <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-[10px] px-1.5 py-0.5 rounded font-medium">Oficial</span>
+                    {/* === Right Column: Templates === */}
+                    <div className="col-span-1 md:col-span-5 flex flex-col gap-6">
+                        {/* Step 2 header */}
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-[var(--primary)] text-white flex items-center justify-center font-bold text-sm shadow-lg">2</div>
+                            <h2 className="font-semibold text-gray-800 text-lg">Seleccionar Plantilla</h2>
                         </div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">Formato estándar DAW/DAM</p>
+
+                        {/* Template cards */}
+                        <div className="grid grid-cols-1 gap-4">
+                            {/* Instituto FOC - Selected/Active card */}
+                            <button
+                                onClick={() => setSelectedTemplate("FOC")}
+                                className={`text-left rounded-2xl p-5 transition-all cursor-pointer relative overflow-hidden ${selectedTemplate === "FOC"
+                                    ? "bg-[var(--primary)] shadow-lg border-2 border-transparent"
+                                    : "bg-white shadow-soft border border-gray-100 hover:border-[var(--primary)]"
+                                    }`}
+                            >
+                                {selectedTemplate === "FOC" && (
+                                    <div className="absolute top-3 right-3 w-3 h-3 bg-red-500 rounded-full border-2 border-[var(--primary)] z-10" />
+                                )}
+                                <div className="flex items-start gap-4">
+                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${selectedTemplate === "FOC" ? "bg-white/10" : "bg-gray-100"
+                                        }`}>
+                                        <span className={`material-symbols-outlined ${selectedTemplate === "FOC" ? "text-white" : "text-gray-500"}`}>school</span>
+                                    </div>
+                                    <div>
+                                        <h3 className={`font-bold text-lg ${selectedTemplate === "FOC" ? "text-white" : "text-gray-800"}`}>Instituto FOC</h3>
+                                        <p className={`text-xs mt-1 ${selectedTemplate === "FOC" ? "text-blue-200" : "text-gray-500"}`}>Plantilla oficial para examenes y tareas academicas.</p>
+                                    </div>
+                                </div>
+                                {selectedTemplate === "FOC" && (
+                                    <div className="mt-4 flex gap-2">
+                                        <span className="text-[10px] uppercase font-bold tracking-wider text-white/60 bg-white/10 px-2 py-1 rounded">Oficial</span>
+                                        <span className="text-[10px] uppercase font-bold tracking-wider text-white/60 bg-white/10 px-2 py-1 rounded">A4</span>
+                                    </div>
+                                )}
+                            </button>
+
+                            {/* Crear mi propia plantilla */}
+                            <button
+                                onClick={() => setSelectedTemplate("CUSTOM")}
+                                className={`text-left rounded-2xl p-5 transition-all cursor-pointer relative overflow-hidden group ${selectedTemplate === "CUSTOM"
+                                    ? "bg-[var(--primary)] shadow-lg border-2 border-transparent"
+                                    : "bg-white shadow-soft border border-gray-100 hover:border-[var(--primary)]"
+                                    }`}
+                            >
+                                {selectedTemplate === "CUSTOM" && (
+                                    <div className="absolute top-3 right-3 w-3 h-3 bg-red-500 rounded-full border-2 border-[var(--primary)] z-10" />
+                                )}
+                                <div className="flex items-start gap-4">
+                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors ${selectedTemplate === "CUSTOM"
+                                        ? "bg-white/10"
+                                        : "bg-gray-100 group-hover:bg-blue-50 group-hover:text-[var(--primary)]"
+                                        }`}>
+                                        <span className={`material-symbols-outlined ${selectedTemplate === "CUSTOM" ? "text-white" : "text-gray-500 group-hover:text-[var(--primary)]"}`}>edit_document</span>
+                                    </div>
+                                    <div>
+                                        <h3 className={`font-bold text-lg transition-colors ${selectedTemplate === "CUSTOM" ? "text-white" : "text-gray-800 group-hover:text-[var(--primary)]"}`}>Crear mi propia plantilla</h3>
+                                        <p className={`text-xs mt-1 ${selectedTemplate === "CUSTOM" ? "text-blue-200" : "text-gray-500"}`}>Titulo editable y formato limpio sin logo.</p>
+                                    </div>
+                                </div>
+                                {selectedTemplate === "CUSTOM" && (
+                                    <div className="mt-4 flex gap-2">
+                                        <span className="text-[10px] uppercase font-bold tracking-wider text-white/60 bg-white/10 px-2 py-1 rounded">Personalizable</span>
+                                        <span className="text-[10px] uppercase font-bold tracking-wider text-white/60 bg-white/10 px-2 py-1 rounded">A4</span>
+                                    </div>
+                                )}
+                            </button>
+
+                            {/* Nueva Plantilla placeholder */}
+                            <button
+                                disabled
+                                className="bg-transparent border-2 border-dashed border-gray-300 rounded-2xl p-5 flex items-center justify-center gap-3 cursor-not-allowed hover:bg-gray-50 transition-colors text-gray-400 h-20"
+                            >
+                                <span className="material-symbols-outlined">add</span>
+                                <span className="font-medium">Nueva Plantilla</span>
+                            </button>
+                        </div>
+
+                        {/* AI Tip */}
+                        <div className="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-2xl p-5 border border-indigo-100">
+                            <div className="flex items-center gap-2 mb-2 text-indigo-600">
+                                <span className="material-symbols-outlined text-sm">tips_and_updates</span>
+                                <span className="text-xs font-bold uppercase tracking-wide">AI Tip</span>
+                            </div>
+                            <p className="text-sm text-gray-600 leading-relaxed">
+                                La plantilla &quot;Instituto FOC&quot; utiliza un formato especifico de cabecera. Asegurate de que tu PDF incluya el nombre del alumno para autocompletar.
+                            </p>
+                        </div>
                     </div>
                 </div>
 
-                {/* Generic Template */}
-                <div
-                    onClick={() => setSelectedTemplate("GENERIC")}
-                    className={`relative cursor-pointer rounded-2xl border-2 overflow-hidden transition-all ${selectedTemplate === "GENERIC"
-                        ? "border-[#004785] shadow-lg"
-                        : "border-gray-200 dark:border-slate-700 hover:border-gray-300"
-                        }`}
-                >
-                    {selectedTemplate === "GENERIC" && (
-                        <div className="absolute -top-1 -right-1 w-7 h-7 bg-green-500 rounded-full flex items-center justify-center text-white shadow-lg z-10 border-2 border-white dark:border-slate-800">
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                        </div>
-                    )}
-
-                    <div className="p-4 bg-white dark:bg-slate-800 flex items-center gap-4">
-                        <div className="w-12 h-12 bg-gray-100 dark:bg-slate-700 rounded-xl flex items-center justify-center">
-                            <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                        </div>
-                        <div>
-                            <h3 className="font-semibold text-gray-900 dark:text-white text-sm">Plantilla Genérica</h3>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">Sin formato institucional</p>
-                        </div>
+                {/* Error Message */}
+                {error && (
+                    <div className="bg-red-50 text-red-600 text-sm px-4 py-3 rounded-xl border border-red-200 mt-6">
+                        {error}
                     </div>
-                </div>
-            </section>
-
-            {/* Error Message */}
-            {error && (
-                <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm px-4 py-3 rounded-xl border border-red-200 dark:border-red-800">
-                    {error}
-                </div>
-            )}
-
-            {/* Submit Button */}
-            <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-white/0 dark:from-slate-900 dark:via-slate-900 dark:to-slate-900/0 pt-12 pb-8 px-4 z-20 pointer-events-none">
-                <div className="max-w-md mx-auto pointer-events-auto">
-                    <button
-                        onClick={handleSubmit}
-                        disabled={isProcessing || !inputMode}
-                        className="w-full bg-[#004785] hover:bg-[#003366] text-white font-semibold py-4 px-6 rounded-xl shadow-xl shadow-blue-900/20 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2.5"
-                    >
-                        {isProcessing ? (
-                            <>
-                                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                </svg>
-                                Procesando...
-                            </>
-                        ) : (
-                            <>
-                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-                                </svg>
-                                Procesar y Generar Borrador
-                            </>
-                        )}
-                    </button>
-                </div>
+                )}
             </div>
 
-            {/* Bottom padding for fixed button */}
-            <div className="h-24"></div>
+            {/* Sticky bottom bar */}
+            <div className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-[var(--border-subtle)] p-4 z-20">
+                <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+                    {/* Status indicator */}
+                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                        <span className={`w-2 h-2 rounded-full ${statusColor}`} />
+                        <span>{statusText}</span>
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="flex items-center gap-4 w-full md:w-auto">
+                        <button
+                            disabled={isProcessing || !inputMode}
+                            className="flex-1 md:flex-none px-6 py-3 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            Guardar Borrador
+                        </button>
+                        <button
+                            onClick={handleSubmit}
+                            disabled={isProcessing || !inputMode}
+                            className="flex-1 md:flex-none px-8 py-3 rounded-xl bg-[#F0A0A0] hover:bg-[#E57373] text-red-900 font-bold shadow-lg shadow-red-200/50 flex items-center justify-center gap-2 transition-all transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                        >
+                            {isProcessing ? (
+                                <>
+                                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                    </svg>
+                                    Procesando...
+                                </>
+                            ) : (
+                                <>
+                                    <span className="material-symbols-outlined text-sm">auto_awesome</span>
+                                    Procesar y Generar
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 }

@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import "./dock.css";
 
 export default async function ProtectedLayout({
     children,
@@ -14,48 +15,69 @@ export default async function ProtectedLayout({
     }
 
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-900 font-sans">
+        <div className="h-screen flex flex-col overflow-hidden bg-[var(--background-app)]">
             {/* Header */}
-            <header className="fixed top-0 left-0 right-0 z-50 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-700 px-4 py-3">
-                <div className="max-w-2xl mx-auto flex items-center justify-between">
-                    <Link href="/app/upload" className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#004785] to-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-900/20">
-                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                            </svg>
-                        </div>
-                        <div>
-                            <h1 className="font-bold text-lg text-gray-900 dark:text-white leading-none">DocuTutor</h1>
-                            <span className="text-[10px] font-medium text-[#004785] dark:text-blue-400 uppercase tracking-wider">Editor de Tareas</span>
-                        </div>
-                    </Link>
-
-                    <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-500 dark:text-gray-400 hidden sm:block">
-                            {session.user?.email}
-                        </span>
-                        <form action={async () => {
-                            "use server";
-                            const { signOut } = await import("@/lib/auth");
-                            await signOut({ redirectTo: "/login" });
-                        }}>
-                            <button
-                                type="submit"
-                                className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors text-gray-500 dark:text-gray-400"
-                                title="Cerrar sesión"
-                            >
-                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                                </svg>
-                            </button>
-                        </form>
+            <header className="h-16 bg-white border-b border-[var(--border-subtle)] flex items-center justify-between px-6 shrink-0 z-20">
+                <Link href="/app/upload" className="flex items-center gap-3">
+                    <div className="w-9 h-9 bg-[var(--primary)] rounded-lg flex items-center justify-center text-white">
+                        <span className="material-symbols-outlined text-[20px]">menu_book</span>
                     </div>
+                    <div>
+                        <h1 className="text-base font-bold text-[var(--primary)] leading-tight">AIDraft</h1>
+                        <p className="text-[10px] text-[var(--text-subtle)] font-semibold tracking-wider uppercase">Editor de Tareas</p>
+                    </div>
+                </Link>
+
+                <div className="flex items-center gap-4 text-sm text-[var(--text-subtle)]">
+                    <div className="hidden md:flex items-center gap-2 text-sm text-gray-600 bg-gray-100 px-3 py-1.5 rounded-full">
+                        <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                        System Operational
+                    </div>
+                    <span className="hidden sm:block font-medium">{session.user?.email}</span>
+                    <form action={async () => {
+                        "use server";
+                        const { signOut } = await import("@/lib/auth");
+                        await signOut({ redirectTo: "/login" });
+                    }}>
+                        <button
+                            type="submit"
+                            className="hover:text-[var(--primary)] transition-colors"
+                            title="Cerrar sesión"
+                        >
+                            <span className="material-symbols-outlined text-[22px]">logout</span>
+                        </button>
+                    </form>
                 </div>
             </header>
 
             {/* Content */}
-            <main className="pt-20 pb-8">
+            <main className="flex-1 overflow-hidden relative">
                 {children}
+
+                {/* Floating Quick Links Dock - Vertical Pill */}
+                <div className="dock-floating">
+                    <div className="dock-container">
+                        <a href="https://fp.foc.es/" target="_blank" rel="noopener noreferrer" className="dock-card dock-card-foc" title="FOC Moodle">
+                            <span className="dock-foc">FOC</span>
+                        </a>
+                        <a href="https://gemini.google.com/app" target="_blank" rel="noopener noreferrer" className="dock-card dock-card-gemini" title="Gemini AI">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 2L13.09 8.26L18 6L14.74 10.91L21 12L14.74 13.09L18 18L13.09 15.74L12 22L10.91 15.74L6 18L9.26 13.09L3 12L9.26 10.91L6 6L10.91 8.26L12 2Z" fill="currentColor" />
+                            </svg>
+                        </a>
+                        <a href="https://www.pdf24.org/es/" target="_blank" rel="noopener noreferrer" className="dock-card dock-card-pdf" title="PDF24">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M14 2H6C4.9 2 4 2.9 4 4V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V8L14 2ZM6 20V4H13V9H18V20H6ZM8 15H10V17H8V15ZM12 15H16V17H12V15ZM8 12H16V14H8V12Z" fill="currentColor" />
+                            </svg>
+                        </a>
+                        <a href="https://claude.ai/" target="_blank" rel="noopener noreferrer" className="dock-card dock-card-claude" title="Claude AI">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="none" />
+                                <circle cx="12" cy="12" r="4" fill="currentColor" />
+                            </svg>
+                        </a>
+                    </div>
+                </div>
             </main>
         </div>
     );

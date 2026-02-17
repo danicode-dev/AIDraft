@@ -35,12 +35,24 @@ function PreviewContent() {
         tema: "",
     });
 
+    // Cover edits state — editable fields for the preview cover
+    const [coverEdits, setCoverEdits] = useState({
+        titulo: "",
+        subtitulo: "",
+    });
+
     // Load user metadata from localStorage on mount
     useEffect(() => {
         const saved = localStorage.getItem("docututor_user_meta");
         if (saved) {
             try {
                 setUserMeta(JSON.parse(saved));
+            } catch { /* ignore */ }
+        }
+        const savedCover = localStorage.getItem("docututor_cover_edits");
+        if (savedCover) {
+            try {
+                setCoverEdits(JSON.parse(savedCover));
             } catch { /* ignore */ }
         }
     }, []);
@@ -52,35 +64,44 @@ function PreviewContent() {
         localStorage.setItem("docututor_user_meta", JSON.stringify(updated));
     };
 
+    const updateCoverEdit = (field: keyof typeof coverEdits, value: string) => {
+        const updated = { ...coverEdits, [field]: value };
+        setCoverEdits(updated);
+        localStorage.setItem("docututor_cover_edits", JSON.stringify(updated));
+    };
+
     // Sanitize filename for Windows/Mac compatibility
     const sanitizeFilename = (name: string): string => {
-        // Remove invalid chars: \ / : * ? " < > |
         let sanitized = name.replace(/[\\/:*?"<>|]/g, "");
-        // Replace multiple spaces/underscores with single underscore
         sanitized = sanitized.replace(/[\s_]+/g, "_");
-        // Remove leading/trailing underscores and dots
         sanitized = sanitized.replace(/^[_.\s]+|[_.\s]+$/g, "");
-        // Limit length (leave room for .docx)
         if (sanitized.length > 116) {
             sanitized = sanitized.substring(0, 116);
         }
-        // Ensure .docx extension
         if (!sanitized.toLowerCase().endsWith(".docx")) {
             sanitized += ".docx";
         }
         return sanitized || "documento.docx";
     };
 
-    // Generate default filename from user metadata
-    const generateDefaultFilename = () => {
+    // Generate filename from metadata object
+    const generateFilenameFromMeta = (meta: typeof userMeta) => {
         const parts = [
-            userMeta.asignatura || "ASIGNATURA",
-            userMeta.apellidos || "APELLIDOS",
-            userMeta.nombre || "NOMBRE",
-            userMeta.dni || "DNI",
-            userMeta.tema || "TEMA",
+            meta.asignatura || "ASIGNATURA",
+            meta.apellidos || "APELLIDOS",
+            meta.nombre || "NOMBRE",
+            meta.dni || "DNI",
+            meta.tema || "TEMA",
         ];
         return sanitizeFilename(parts.join("_"));
+    };
+
+    // Update metadata and regenerate filename immediately
+    const handleMetaChange = (field: keyof typeof userMeta, value: string) => {
+        const updatedMeta = { ...userMeta, [field]: value };
+        setUserMeta(updatedMeta);
+        localStorage.setItem("docututor_user_meta", JSON.stringify(updatedMeta));
+        setFilename(generateFilenameFromMeta(updatedMeta));
     };
 
     useEffect(() => {
@@ -105,9 +126,10 @@ function PreviewContent() {
         loadDocument();
     }, [documentId, router]);
 
-    // Open filename modal instead of exporting directly
     const openExportModal = () => {
-        setFilename(generateDefaultFilename());
+        if (!filename) {
+            setFilename(generateFilenameFromMeta(userMeta));
+        }
         setShowFilenameModal(true);
     };
 
@@ -126,6 +148,8 @@ function PreviewContent() {
                     apellidos: userMeta.apellidos,
                     nombre: userMeta.nombre,
                     dni: userMeta.dni,
+                    coverTitulo: coverEdits.titulo,
+                    coverSubtitulo: coverEdits.subtitulo,
                 }),
             });
 
@@ -134,7 +158,6 @@ function PreviewContent() {
                 throw new Error(errData.error || "Error al exportar");
             }
 
-            // Download the file with custom filename
             const blob = await res.blob();
             const url = window.URL.createObjectURL(blob);
             const a = window.document.createElement("a");
@@ -157,145 +180,188 @@ function PreviewContent() {
         return match ? match[1].toUpperCase() : null;
     };
 
+    const isFOC = document?.templateType?.toUpperCase().includes("FOC");
+    const isCustom = document?.templateType?.toUpperCase().includes("CUSTOM");
+
     if (isLoading) {
         return (
             <div className="flex items-center justify-center min-h-[60vh]">
-                <div className="animate-spin h-8 w-8 border-4 border-[#004785] border-t-transparent rounded-full"></div>
+                <div className="animate-spin h-8 w-8 border-4 border-[var(--primary)] border-t-transparent rounded-full"></div>
             </div>
         );
     }
-
-    if (error || !document) {
-        return (
-            <div className="max-w-2xl mx-auto px-4 py-12 text-center">
-                <p className="text-red-600 dark:text-red-400 mb-4">{error || "Documento no encontrado"}</p>
-                <Link href="/app/upload" className="text-[#004785] hover:underline">
-                    Volver a subir archivo
-                </Link>
-            </div>
-        );
-    }
-
-    const completedCount = Object.values(document.answers).filter((a) => a && a.length > 10).length;
 
     return (
-        <div className="max-w-2xl mx-auto px-4 py-6 pb-44 space-y-6">
-            {/* Status banner */}
-            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-xl p-4 flex gap-3 items-start">
-                <svg className="w-5 h-5 text-[#004785] dark:text-blue-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="text-sm text-blue-800 dark:text-blue-200 font-medium">
-                    {completedCount} de {document.questions.length} preguntas completadas.
-                    {completedCount === document.questions.length
-                        ? " ¡Listo para exportar!"
-                        : " Puedes exportar o seguir editando."}
-                </p>
-            </div>
-
-            {/* Preview cards */}
-            <div className="space-y-6">
-                {document.questions.map((question, index) => {
-                    const answer = document.answers[index] || "";
-                    const raCode = extractRA(question);
-
-                    return (
-                        <article
-                            key={index}
-                            className="bg-white dark:bg-slate-800 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-sm"
-                        >
-                            {/* Header */}
-                            <div className="bg-[#004785] px-4 py-3 border-b border-blue-800">
-                                <h3 className="font-semibold text-white text-sm leading-snug">
-                                    {raCode ? `(${raCode}) ` : ""}{question.replace(/\(RA\d+_[a-z]\)/gi, "").trim()}
-                                </h3>
-                            </div>
-
-                            {/* Content */}
-                            <div className="p-5 space-y-5">
-                                {/* Question excerpt */}
-                                <div className="relative pl-3 border-l-4 border-gray-200 dark:border-slate-600">
-                                    <label className="block text-[10px] uppercase font-bold text-gray-500 dark:text-gray-400 mb-1 tracking-wider">
-                                        Enunciado
-                                    </label>
-                                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                                        {question}
-                                    </p>
-                                </div>
-
-                                {/* Answer */}
-                                <div className="relative pl-3 border-l-4 border-blue-400 dark:border-blue-500 bg-blue-50/50 dark:bg-blue-900/10 -mr-2 rounded-r-lg py-2">
-                                    <label className="block text-[10px] uppercase font-bold text-[#004785] dark:text-blue-400 mb-2 tracking-wider">
-                                        Respuesta
-                                    </label>
-                                    <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">
-                                        {answer || <span className="text-gray-400 italic">Sin respuesta</span>}
-                                    </p>
-                                </div>
-                            </div>
-                        </article>
-                    );
-                })}
-            </div>
-
-            {/* Info text */}
-            <p className="text-center text-xs text-gray-400 italic">
-                Mostrando {document.questions.length} preguntas • Plantilla: {document.templateType}
-            </p>
-
-            {/* Fixed bottom bar */}
-            <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 p-4 pb-8 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] z-50">
-                <div className="max-w-2xl mx-auto flex flex-col gap-3">
+        <div className="flex-grow flex flex-col h-full bg-[var(--background-app)] relative overflow-hidden">
+            {/* Header */}
+            <div className="bg-white dark:bg-slate-800 border-b border-[var(--border-subtle)] px-6 py-4 flex items-center justify-between shrink-0 z-10">
+                <div>
+                    <h1 className="text-xl font-bold text-[var(--primary)]">Vista Previa</h1>
+                    <p className="text-xs text-[var(--text-subtle)]">Revisa el contenido antes de exportar — haz clic en los textos de la portada para editarlos</p>
+                </div>
+                <div className="flex gap-3">
+                    <Link
+                        href={`/app/editor?id=${documentId}`}
+                        className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors flex items-center gap-2"
+                    >
+                        <span className="material-symbols-outlined text-[18px]">edit</span>
+                        Editar
+                    </Link>
                     <button
                         onClick={openExportModal}
                         disabled={isExporting}
-                        className="w-full bg-[#004785] hover:bg-blue-800 text-white font-bold text-base py-4 px-6 rounded-xl shadow-lg shadow-blue-900/20 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-3"
+                        className="px-4 py-2 text-sm font-bold text-white bg-[var(--primary-action)] hover:bg-red-500 rounded-lg shadow-md transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {isExporting ? (
                             <>
-                                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                </svg>
-                                Generando Word...
+                                <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></span>
+                                Exportando...
                             </>
                         ) : (
                             <>
-                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                                </svg>
-                                Descargar Word (.docx)
+                                <span className="material-symbols-outlined text-[18px]">download</span>
+                                Exportar Word
                             </>
                         )}
                     </button>
-                    <Link
-                        href={`/app/editor?id=${documentId}`}
-                        className="w-full bg-transparent hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-600 dark:text-gray-400 font-medium py-3 px-6 rounded-xl border border-transparent hover:border-gray-200 dark:hover:border-slate-600 transition-colors flex items-center justify-center gap-2"
-                    >
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                        Editar respuestas
-                    </Link>
                 </div>
             </div>
 
-            {/* Filename Modal */}
-            {showFilenameModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4">
-                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-5">
-                        <h3 className="text-lg font-bold text-[#004785] dark:text-blue-400">Configurar nombre del archivo</h3>
+            {/* Content Preview */}
+            <div className="flex-1 overflow-y-auto p-8">
+                {error ? (
+                    <div className="text-center text-red-500 py-10">{error}</div>
+                ) : !document ? (
+                    <div className="text-center py-10">Cargando...</div>
+                ) : (
+                    <div className="max-w-4xl mx-auto bg-white dark:bg-slate-800 shadow-card rounded-xl min-h-[800px] p-12 relative">
+                        {/* Cover Page */}
+                        <div className="border-b-2 border-dashed border-gray-200 dark:border-gray-700 pb-12 mb-12">
+                            {isFOC ? (
+                                <>
+                                    {/* FOC Cover — logo + CICLO:DAW + editable fields */}
+                                    <div className="flex justify-between items-start mb-20">
+                                        <div className="w-32 h-32 bg-gray-100 dark:bg-gray-700 flex items-center justify-center rounded">
+                                            <span className="text-xs text-gray-400">[LOGO]</span>
+                                        </div>
+                                        <div className="text-right">
+                                            <h2 className="text-2xl font-bold text-[var(--primary)] font-[Calibri]">CICLO: DAW</h2>
+                                            <input
+                                                type="text"
+                                                value={userMeta.asignatura}
+                                                onChange={(e) => updateUserMeta("asignatura", e.target.value)}
+                                                placeholder="ASIGNATURA"
+                                                className="text-2xl font-bold text-[var(--primary)] font-[Calibri] uppercase text-right bg-transparent border-b border-dashed border-transparent hover:border-gray-300 focus:border-[var(--primary)] outline-none w-full transition-colors"
+                                            />
+                                        </div>
+                                    </div>
 
-                        {/* User metadata fields */}
-                        <div className="grid grid-cols-2 gap-3">
+                                    <div className="text-center py-12">
+                                        <input
+                                            type="text"
+                                            value={coverEdits.titulo || `${userMeta.asignatura || "ASIGNATURA"} Y ${userMeta.tema || "TEMA"}`}
+                                            onChange={(e) => updateCoverEdit("titulo", e.target.value)}
+                                            placeholder="TITULO DEL DOCUMENTO"
+                                            className="text-5xl font-bold text-[var(--primary)] font-[Arial] uppercase leading-tight text-center bg-transparent border-b-2 border-dashed border-transparent hover:border-gray-300 focus:border-[var(--primary)] outline-none w-full transition-colors"
+                                        />
+                                    </div>
+
+                                    <div className="text-right mt-16 space-y-1">
+                                        <h3 className="text-2xl font-bold text-[var(--primary)] font-[Arial]">Alumno:</h3>
+                                        <input
+                                            type="text"
+                                            value={userMeta.apellidos}
+                                            onChange={(e) => updateUserMeta("apellidos", e.target.value)}
+                                            placeholder="APELLIDOS"
+                                            className="text-2xl font-bold text-[var(--primary)] font-[Arial] uppercase text-right bg-transparent border-b border-dashed border-transparent hover:border-gray-300 focus:border-[var(--primary)] outline-none w-full transition-colors"
+                                        />
+                                        <input
+                                            type="text"
+                                            value={userMeta.nombre}
+                                            onChange={(e) => updateUserMeta("nombre", e.target.value)}
+                                            placeholder="NOMBRE"
+                                            className="text-2xl font-bold text-[var(--primary)] font-[Arial] uppercase text-right bg-transparent border-b border-dashed border-transparent hover:border-gray-300 focus:border-[var(--primary)] outline-none w-full transition-colors"
+                                        />
+                                        <input
+                                            type="text"
+                                            value={userMeta.dni}
+                                            onChange={(e) => updateUserMeta("dni", e.target.value)}
+                                            placeholder="DNI"
+                                            className="text-2xl font-bold text-[var(--primary)] font-[Arial] text-right bg-transparent border-b border-dashed border-transparent hover:border-gray-300 focus:border-[var(--primary)] outline-none w-full transition-colors"
+                                        />
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    {/* CUSTOM Cover — simple, big editable title, no logo */}
+                                    <div className="text-center py-32">
+                                        <input
+                                            type="text"
+                                            value={coverEdits.titulo}
+                                            onChange={(e) => updateCoverEdit("titulo", e.target.value)}
+                                            placeholder="TITULO DEL DOCUMENTO"
+                                            className="text-5xl font-bold text-[var(--primary)] font-[Arial] uppercase leading-tight text-center bg-transparent border-b-2 border-dashed border-transparent hover:border-gray-300 focus:border-[var(--primary)] outline-none w-full transition-colors"
+                                        />
+                                        <input
+                                            type="text"
+                                            value={coverEdits.subtitulo}
+                                            onChange={(e) => updateCoverEdit("subtitulo", e.target.value)}
+                                            placeholder="Subtitulo (opcional)"
+                                            className="text-2xl text-gray-500 font-[Arial] text-center bg-transparent border-b border-dashed border-transparent hover:border-gray-300 focus:border-gray-400 outline-none w-full mt-6 transition-colors"
+                                        />
+                                    </div>
+
+                                    <div className="text-right mt-8 space-y-1">
+                                        <input
+                                            type="text"
+                                            value={userMeta.nombre}
+                                            onChange={(e) => updateUserMeta("nombre", e.target.value)}
+                                            placeholder="Nombre y apellidos"
+                                            className="text-xl font-semibold text-[var(--primary)] font-[Arial] text-right bg-transparent border-b border-dashed border-transparent hover:border-gray-300 focus:border-[var(--primary)] outline-none w-full transition-colors"
+                                        />
+                                    </div>
+                                </>
+                            )}
+
+                            <p className="text-center text-xs text-gray-400 mt-12 italic">
+                                Haz clic en los textos para editarlos — se guardarán en el Word exportado
+                            </p>
+                        </div>
+
+                        {/* Content — answers as HTML */}
+                        <div className="space-y-8">
+                            {Object.entries(document.answers).map(([idx, answer]) => {
+                                const question = document.questions[parseInt(idx)];
+                                return (
+                                    <div key={idx} className="mb-8">
+                                        <h3 className="text-lg font-bold text-[var(--primary)] mb-2 font-[Cambria]">{question}</h3>
+                                        <div
+                                            className="text-base text-gray-800 dark:text-gray-200 font-[Arial] whitespace-pre-wrap leading-relaxed"
+                                            dangerouslySetInnerHTML={{ __html: answer || "" }}
+                                        />
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Export Filename Modal */}
+            {showFilenameModal && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md p-6 animate-in fade-in zoom-in duration-200">
+                        <h3 className="text-lg font-bold text-[var(--primary)] mb-4">Configurar nombre del archivo</h3>
+
+                        <div className="grid grid-cols-2 gap-4 mb-4">
                             <div>
                                 <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Asignatura</label>
                                 <input
                                     type="text"
                                     value={userMeta.asignatura}
-                                    onChange={(e) => { updateUserMeta("asignatura", e.target.value); setFilename(generateDefaultFilename()); }}
-                                    placeholder="DAW"
-                                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-slate-600 rounded-lg bg-gray-50 dark:bg-slate-900 focus:ring-2 focus:ring-[#004785] focus:border-transparent"
+                                    onChange={(e) => handleMetaChange("asignatura", e.target.value)}
+                                    placeholder="SI"
+                                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-slate-600 rounded-lg bg-gray-50 dark:bg-slate-900 focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent"
                                 />
                             </div>
                             <div>
@@ -303,9 +369,9 @@ function PreviewContent() {
                                 <input
                                     type="text"
                                     value={userMeta.tema}
-                                    onChange={(e) => { updateUserMeta("tema", e.target.value); setFilename(generateDefaultFilename()); }}
-                                    placeholder="Tarea 4 - UML"
-                                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-slate-600 rounded-lg bg-gray-50 dark:bg-slate-900 focus:ring-2 focus:ring-[#004785] focus:border-transparent"
+                                    onChange={(e) => handleMetaChange("tema", e.target.value)}
+                                    placeholder="T22"
+                                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-slate-600 rounded-lg bg-gray-50 dark:bg-slate-900 focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent"
                                 />
                             </div>
                             <div>
@@ -313,9 +379,9 @@ function PreviewContent() {
                                 <input
                                     type="text"
                                     value={userMeta.apellidos}
-                                    onChange={(e) => { updateUserMeta("apellidos", e.target.value); setFilename(generateDefaultFilename()); }}
-                                    placeholder="García Ortega"
-                                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-slate-600 rounded-lg bg-gray-50 dark:bg-slate-900 focus:ring-2 focus:ring-[#004785] focus:border-transparent"
+                                    onChange={(e) => handleMetaChange("apellidos", e.target.value)}
+                                    placeholder="Garcia Ortega"
+                                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-slate-600 rounded-lg bg-gray-50 dark:bg-slate-900 focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent"
                                 />
                             </div>
                             <div>
@@ -323,9 +389,9 @@ function PreviewContent() {
                                 <input
                                     type="text"
                                     value={userMeta.nombre}
-                                    onChange={(e) => { updateUserMeta("nombre", e.target.value); setFilename(generateDefaultFilename()); }}
+                                    onChange={(e) => handleMetaChange("nombre", e.target.value)}
                                     placeholder="Daniel"
-                                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-slate-600 rounded-lg bg-gray-50 dark:bg-slate-900 focus:ring-2 focus:ring-[#004785] focus:border-transparent"
+                                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-slate-600 rounded-lg bg-gray-50 dark:bg-slate-900 focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent"
                                 />
                             </div>
                             <div className="col-span-2">
@@ -333,27 +399,27 @@ function PreviewContent() {
                                 <input
                                     type="text"
                                     value={userMeta.dni}
-                                    onChange={(e) => { updateUserMeta("dni", e.target.value); setFilename(generateDefaultFilename()); }}
+                                    onChange={(e) => handleMetaChange("dni", e.target.value)}
                                     placeholder="12345678A"
-                                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-slate-600 rounded-lg bg-gray-50 dark:bg-slate-900 focus:ring-2 focus:ring-[#004785] focus:border-transparent"
+                                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-slate-600 rounded-lg bg-gray-50 dark:bg-slate-900 focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent"
                                 />
                             </div>
                         </div>
 
                         {/* Filename preview/edit */}
-                        <div>
+                        <div className="mb-6">
                             <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Nombre del archivo</label>
                             <input
                                 type="text"
                                 value={filename}
                                 onChange={(e) => setFilename(e.target.value)}
-                                className="w-full px-3 py-2 text-sm border border-[#004785] dark:border-blue-500 rounded-lg bg-blue-50 dark:bg-slate-900 focus:ring-2 focus:ring-[#004785] font-mono"
+                                className="w-full px-3 py-2 text-sm border border-[var(--primary)] rounded-lg bg-[var(--accent-blue-light)] focus:ring-2 focus:ring-[var(--primary)] font-mono"
                             />
                             <p className="text-xs text-gray-400 mt-1">Se sanitizará automáticamente al descargar</p>
                         </div>
 
                         {/* Actions */}
-                        <div className="flex gap-3 pt-2">
+                        <div className="flex gap-3">
                             <button
                                 onClick={() => setShowFilenameModal(false)}
                                 className="flex-1 py-2.5 px-4 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
@@ -362,7 +428,7 @@ function PreviewContent() {
                             </button>
                             <button
                                 onClick={handleExport}
-                                className="flex-1 py-2.5 px-4 text-sm font-bold text-white bg-[#004785] hover:bg-blue-800 rounded-lg shadow transition-colors"
+                                className="flex-1 py-2.5 px-4 text-sm font-bold text-white bg-[var(--primary-action)] hover:bg-red-500 rounded-lg shadow transition-colors"
                             >
                                 Descargar
                             </button>
@@ -374,11 +440,12 @@ function PreviewContent() {
     );
 }
 
+
 export default function PreviewPage() {
     return (
         <Suspense fallback={
             <div className="flex items-center justify-center min-h-[60vh]">
-                <div className="animate-spin h-8 w-8 border-4 border-[#004785] border-t-transparent rounded-full"></div>
+                <div className="animate-spin h-8 w-8 border-4 border-[var(--primary)] border-t-transparent rounded-full"></div>
             </div>
         }>
             <PreviewContent />

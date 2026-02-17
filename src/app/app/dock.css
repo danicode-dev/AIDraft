@@ -1,0 +1,95 @@
+/* Quick Links Dock - Vertical Pill Style */
+
+.dock-floating {
+    position: fixed;
+    right: 24px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 50;
+    display: none;
+}
+
+/* Show only on xl screens */
+@media (min-width: 1280px) {
+    .dock-floating {
+        display: block;
+    }
+}
+
+.dock-container {
+    background: white;
+    border-radius: 1rem;
+    padding: 0.5rem;
+    box-shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.1), 0 1px 4px -1px rgba(0, 0, 0, 0.06);
+    border: 1px solid #e5e7eb;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+/* Card base - uniform rounded squares */
+.dock-card {
+    width: 44px;
+    height: 44px;
+    outline: none;
+    border: none;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.75rem;
+    transition: all 0.2s ease-in-out;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+/* FOC */
+.dock-card-foc {
+    background: #eef2f7;
+    color: #30475E;
+}
+
+.dock-card-foc:hover {
+    background: #30475E;
+    color: white;
+    transform: scale(1.1);
+}
+
+.dock-foc {
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+}
+
+/* Gemini */
+.dock-card-gemini {
+    color: #4285F4;
+}
+
+.dock-card-gemini:hover {
+    background: #4285F4;
+    color: white;
+    transform: scale(1.1);
+}
+
+/* PDF */
+.dock-card-pdf {
+    color: #E53935;
+}
+
+.dock-card-pdf:hover {
+    background: #E53935;
+    color: white;
+    transform: scale(1.1);
+}
+
+/* Claude */
+.dock-card-claude {
+    color: #D97757;
+}
+
+.dock-card-claude:hover {
+    background: #D97757;
+    color: white;
+    transform: scale(1.1);
+}

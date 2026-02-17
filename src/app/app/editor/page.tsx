@@ -18,6 +18,25 @@ interface Attachment {
     size: number;
 }
 
+type Tab = "questions" | "context" | "settings";
+
+// Helper: extract RA code from question text
+function extractRA(question: string): string | null {
+    const match1 = question.match(/\(?(RA\d+_[a-z])\)?/i);
+    if (match1) return match1[1].toUpperCase();
+    const match2 = question.match(/(R\.?A\.?\s*\d+[\._]\w+)/i);
+    if (match2) return match2[1].replace(/[\.\s]/g, "").toUpperCase();
+    return null;
+}
+
+// Helper: short label from question
+function shortLabel(question: string, maxLen = 30): string {
+    // Remove RA prefix pattern for display
+    const cleaned = question.replace(/^\(?(RA\d+_[a-z])\)?\s*[-–:.]?\s*/i, "").trim();
+    if (cleaned.length <= maxLen) return cleaned;
+    return cleaned.substring(0, maxLen) + "...";
+}
+
 function EditorContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
@@ -36,7 +55,14 @@ function EditorContent() {
     const [taskTips, setTaskTips] = useState("");
     const [taskRubric, setTaskRubric] = useState("");
     const [attachments, setAttachments] = useState<Attachment[]>([]);
-    const [activeTab, setActiveTab] = useState<"questions" | "info">("questions");
+    const [activeTab, setActiveTab] = useState<Tab>("questions");
+    const [expandedCard, setExpandedCard] = useState<number | null>(0);
+    const [editingQuestion, setEditingQuestion] = useState<number | null>(null);
+
+    // Structure panel
+    const [showStructure, setShowStructure] = useState(true);
+    const [dragIndex, setDragIndex] = useState<number | null>(null);
+    const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
     // Load document
     useEffect(() => {
@@ -67,10 +93,6 @@ function EditorContent() {
                 setTaskContext(data.taskContext || "");
                 setTaskTips(data.taskTips || "");
                 setTaskRubric(data.taskRubric || "");
-
-                setTaskContext(data.taskContext || "");
-                setTaskTips(data.taskTips || "");
-                setTaskRubric(data.taskRubric || "");
                 setAttachments(data.attachments || []);
 
                 setTemplateType(data.templateType || "FOC");
@@ -91,14 +113,16 @@ function EditorContent() {
         setIsSaving(true);
         try {
             const answers: Record<number, string> = {};
+            const questions: string[] = [];
             updatedCards.forEach((card, i) => {
                 answers[i] = card.answer;
+                questions.push(card.question);
             });
 
             await fetch(`/api/documents/${documentId}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ answers }),
+                body: JSON.stringify({ answers, questions }),
             });
             setLastSaved(new Date());
         } catch (err) {
@@ -155,6 +179,7 @@ function EditorContent() {
     const [generatingIndex, setGeneratingIndex] = useState<number | null>(null);
     const [isGeneratingAll, setIsGeneratingAll] = useState(false);
     const [generatingProgress, setGeneratingProgress] = useState({ current: 0, total: 0 });
+    const [isValidating, setIsValidating] = useState(false);
 
     const askAI = async (index: number) => {
         setGeneratingIndex(index);
@@ -215,7 +240,6 @@ function EditorContent() {
                     const data = await res.json();
                     updateCard(idx, { answer: data.answer, status: "review" });
                 } else {
-                    // Log error but continue with next question
                     const errorData = await res.json().catch(() => ({ error: "Unknown error" }));
                     console.error(`Failed to generate answer for question ${idx}:`, errorData.error);
                 }
@@ -234,30 +258,37 @@ function EditorContent() {
         setGeneratingProgress({ current: 0, total: 0 });
     };
 
+    // Validate all questions at once — marks all as complete and saves
+    const validateAll = async () => {
+        setIsValidating(true);
+        const validated = cards.map(card => ({ ...card, status: "complete" as Status }));
+        setCards(validated);
+        await saveAnswers(validated);
+        await saveMetadata();
+        setIsValidating(false);
+    };
+
     const handleContextFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        // Validation: Max size 15MB
         if (file.size > 15 * 1024 * 1024) {
-            alert("El archivo es demasiado grande (Máx 15MB). Pruebe a comprimirlo o dividirlo.");
+            alert("El archivo es demasiado grande (Max 15MB).");
             return;
         }
 
         const validTypes = [
             "application/pdf",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // docx
-            "application/msword", // doc
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/msword",
             "text/plain",
             "image/png",
             "image/jpeg",
             "image/jpg"
         ];
-        // Allow if type is empty (sometimes happens) or matches list
         if (file.type && !validTypes.includes(file.type)) {
-            // Check extension just in case
             if (!/\.(pdf|docx|doc|txt|png|jpg|jpeg)$/i.test(file.name)) {
-                alert("Tipo de archivo no soportado. Use PDF, DOCX, TXT o Imágenes.");
+                alert("Tipo de archivo no soportado. Use PDF, DOCX, TXT o Imagenes.");
                 return;
             }
         }
@@ -267,7 +298,6 @@ function EditorContent() {
             const formData = new FormData();
             formData.append("file", file);
 
-            // IMPORTANT: Do NOT set Content-Type header manually. Browser sets boundary.
             const res = await fetch("/api/parse", {
                 method: "POST",
                 body: formData,
@@ -286,7 +316,6 @@ function EditorContent() {
                 return prev + separator + text;
             });
 
-            // Add to persistent attachments list
             const newAttachment: Attachment = {
                 name: file.name,
                 type: file.type || "unknown",
@@ -294,7 +323,6 @@ function EditorContent() {
             };
             setAttachments(prev => [...prev, newAttachment]);
 
-            // Clear input
             if (fileInputRef.current) fileInputRef.current.value = "";
 
         } catch (err) {
@@ -304,10 +332,67 @@ function EditorContent() {
         }
     };
 
+    // Rich text formatting
+    const applyFormat = (command: string) => {
+        document.execCommand(command, false);
+    };
+
+    // Drag & drop reorder
+    const handleDragStart = (index: number) => {
+        setDragIndex(index);
+    };
+
+    const handleDragOver = (e: React.DragEvent, index: number) => {
+        e.preventDefault();
+        setDragOverIndex(index);
+    };
+
+    const handleDragEnd = () => {
+        if (dragIndex !== null && dragOverIndex !== null && dragIndex !== dragOverIndex) {
+            setCards(prev => {
+                const newCards = [...prev];
+                const [moved] = newCards.splice(dragIndex, 1);
+                newCards.splice(dragOverIndex, 0, moved);
+                return newCards;
+            });
+            // Update expanded card index if needed
+            if (expandedCard === dragIndex) {
+                setExpandedCard(dragOverIndex);
+            } else if (expandedCard !== null) {
+                if (dragIndex < expandedCard && dragOverIndex >= expandedCard) {
+                    setExpandedCard(expandedCard - 1);
+                } else if (dragIndex > expandedCard && dragOverIndex <= expandedCard) {
+                    setExpandedCard(expandedCard + 1);
+                }
+            }
+        }
+        setDragIndex(null);
+        setDragOverIndex(null);
+    };
+
+    // Status badge color helper
+    const statusColor = (status: Status) => {
+        switch (status) {
+            case "complete": return "bg-green-500";
+            case "review": return "bg-yellow-400";
+            default: return "bg-gray-300";
+        }
+    };
+
+    const statusLabel = (status: Status) => {
+        switch (status) {
+            case "complete": return "Validado";
+            case "review": return "En edicion";
+            default: return "Sin resolver";
+        }
+    };
+
+    const pendingCount = cards.filter(c => c.status === "pending").length;
+
     if (isLoading) {
         return (
             <div className="flex items-center justify-center min-h-[60vh]">
-                <div className="animate-spin h-8 w-8 border-4 border-[#004785] border-t-transparent rounded-full"></div>
+                <div className="animate-spin h-8 w-8 border-4 border-[var(--primary)] border-t-transparent rounded-full"></div>
             </div>
         );
     }
@@ -315,8 +400,8 @@ function EditorContent() {
     if (error) {
         return (
             <div className="max-w-2xl mx-auto px-4 py-12 text-center">
-                <p className="text-red-600 dark:text-red-400 mb-4">{error}</p>
-                <Link href="/app/upload" className="text-[#004785] hover:underline">
+                <p className="text-red-600 mb-4">{error}</p>
+                <Link href="/app/upload" className="text-[var(--primary)] hover:underline">
                     Volver a subir archivo
                 </Link>
             </div>
@@ -324,229 +409,526 @@ function EditorContent() {
     }
 
     return (
-        <div className="max-w-6xl mx-auto px-4 py-6 pb-36">
+        <div className="flex h-full overflow-hidden">
+            {/* Sidebar */}
+            <aside className="w-64 bg-white border-r border-[var(--border-subtle)] flex flex-col pt-6 shrink-0">
+                <div className="px-6 mb-4">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Workspace</span>
+                </div>
+                <nav className="px-4 space-y-1">
+                    <button
+                        onClick={() => setActiveTab("questions")}
+                        className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all text-left ${activeTab === "questions"
+                            ? "bg-[var(--background-app)] text-[var(--primary)] font-semibold shadow-sm border border-gray-200"
+                            : "text-[var(--text-subtle)] hover:bg-[var(--background-app)] hover:text-[var(--primary)]"
+                            }`}
+                    >
+                        <span className={`material-symbols-outlined text-[20px] ${activeTab === "questions" ? "filled-icon" : ""}`}>quiz</span>
+                        Editor de Preguntas
+                    </button>
+                    <button
+                        onClick={() => setActiveTab("context")}
+                        className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all text-left ${activeTab === "context"
+                            ? "bg-[var(--background-app)] text-[var(--primary)] font-semibold shadow-sm border border-gray-200"
+                            : "text-[var(--text-subtle)] hover:bg-[var(--background-app)] hover:text-[var(--primary)]"
+                            }`}
+                    >
+                        <span className="material-symbols-outlined text-[20px]">psychology</span>
+                        Contexto PDF
+                    </button>
+                    <button
+                        onClick={() => setActiveTab("settings")}
+                        className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all text-left ${activeTab === "settings"
+                            ? "bg-[var(--background-app)] text-[var(--primary)] font-semibold shadow-sm border border-gray-200"
+                            : "text-[var(--text-subtle)] hover:bg-[var(--background-app)] hover:text-[var(--primary)]"
+                            }`}
+                    >
+                        <span className="material-symbols-outlined text-[20px]">tune</span>
+                        Validacion
+                    </button>
+                </nav>
 
-            {/* Header / Info */}
-            <div className="flex justify-between items-center text-xs text-gray-500 dark:text-gray-400 px-1 mb-6">
-                <span>{lastSaved ? `Guardado: ${lastSaved.toLocaleTimeString()}` : "Cambios sin guardar"}</span>
-                {isSaving && <span className="animate-pulse text-[#004785]">Guardando...</span>}
-            </div>
+                {/* Divider */}
+                <div className="px-6 mt-6 mb-3">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Herramientas</span>
+                </div>
+                <nav className="px-4 space-y-1">
+                    <button
+                        onClick={() => setActiveTab("settings")}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all text-left text-[var(--text-subtle)] hover:bg-[var(--background-app)] hover:text-[var(--primary)]"
+                    >
+                        <span className="material-symbols-outlined text-[20px]">settings</span>
+                        Configuracion
+                    </button>
+                    <button
+                        onClick={generateAll}
+                        disabled={isGeneratingAll || generatingIndex !== null}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all text-left text-[var(--text-subtle)] hover:bg-[var(--background-app)] hover:text-[var(--primary)] disabled:opacity-50"
+                    >
+                        <span className="material-symbols-outlined text-[20px]">auto_awesome</span>
+                        Auto-Reorder
+                    </button>
+                </nav>
 
-            {/* TABS NAVIGATION */}
-            <div className="flex border-b border-gray-200 dark:border-slate-700 mb-6">
-                <button
-                    onClick={() => setActiveTab("questions")}
-                    className={`pb-3 px-4 text-sm font-semibold transition-colors border-b-2 ${activeTab === "questions"
-                        ? "border-[#004785] text-[#004785] dark:text-blue-400 dark:border-blue-400"
-                        : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400"
-                        }`}
-                >
-                    Preguntas
-                </button>
-                <button
-                    onClick={() => setActiveTab("info")}
-                    className={`pb-3 px-4 text-sm font-semibold transition-colors border-b-2 ${activeTab === "info"
-                        ? "border-[#004785] text-[#004785] dark:text-blue-400 dark:border-blue-400"
-                        : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400"
-                        }`}
-                >
-                    Contexto IA
-                </button>
-            </div>
+                {/* User info at bottom */}
+                <div className="mt-auto p-4 border-t border-[var(--border-subtle)]">
+                    <p className="text-xs text-center text-gray-400">
+                        {lastSaved ? `Guardado: ${lastSaved.toLocaleTimeString()}` : "Sin guardar"}
+                    </p>
+                </div>
+            </aside>
 
-            <div className="space-y-6">
-                {/* TAB: QUESTIONS */}
-                {activeTab === "questions" && (
-                    <div className="space-y-6">
-                        <div className="flex items-center justify-between mb-4">
-                            <h2 className="text-xl font-bold text-[#004785] dark:text-blue-400">Preguntas detectadas</h2>
-                            <button
-                                onClick={generateAll}
-                                disabled={isGeneratingAll || generatingIndex !== null}
-                                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 rounded-lg shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                {isGeneratingAll ? (
-                                    <>
-                                        <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
-                                        Generando {generatingProgress.current}/{generatingProgress.total}...
-                                    </>
-                                ) : (
-                                    <>
-                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                        </svg>
-                                        Generar Todas
-                                    </>
-                                )}
-                            </button>
-                        </div>
-                        {cards.map((card, index) => (
-                            <article
-                                key={index}
-                                className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden"
-                            >
-                                {/* Header */}
-                                <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/50 flex justify-between items-start gap-4">
-                                    <h3 className="font-semibold text-[#004785] dark:text-blue-400 leading-tight text-sm whitespace-pre-wrap">
-                                        {card.question}
-                                    </h3>
-                                    <select
-                                        value={card.status}
-                                        onChange={(e) => updateCard(index, { status: e.target.value as Status })}
-                                        className="text-xs px-2 py-1 rounded-full font-medium border-0 cursor-pointer bg-transparent"
-                                    >
-                                        <option value="pending">Pendiente</option>
-                                        <option value="review">Revisar</option>
-                                        <option value="complete">Completado</option>
-                                    </select>
-                                </div>
-
-                                {/* Body */}
-                                <div className="p-4">
-                                    <textarea
-                                        value={card.answer}
-                                        onChange={(e) => updateCard(index, {
-                                            answer: e.target.value,
-                                            status: e.target.value.length > 50 ? "complete" : e.target.value.length > 0 ? "review" : "pending"
-                                        })}
-                                        className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg p-3 text-sm focus:ring-2 focus:ring-[#004785] focus:border-transparent transition-all text-gray-800 dark:text-gray-200 resize-y min-h-[120px]"
-                                        placeholder="Escribe tu respuesta aquí..."
-                                        spellCheck={false}
-                                    />
-
-                                    <div className="mt-4 flex gap-2 justify-end">
-                                        <button
-                                            onClick={() => updateCard(index, { answer: "", status: "pending" })}
-                                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
-                                        >
-                                            Limpiar
-                                        </button>
-                                        <button
-                                            onClick={() => askAI(index)}
-                                            disabled={generatingIndex === index}
-                                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                        >
-                                            {generatingIndex === index ? "Generando..." : "Preguntar a IA"}
-                                        </button>
+            {/* Main Content */}
+            <main className="flex-1 overflow-y-auto relative bg-[var(--background-app)]">
+                <div className="w-[95%] max-w-[1400px] mx-auto pb-28 p-8">
+                    {/* Questions Tab */}
+                    {activeTab === "questions" && (
+                        <>
+                            <div className="flex items-center justify-between mb-6">
+                                <div>
+                                    <h2 className="text-2xl font-bold text-gray-900">Professional Editor</h2>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <span className="w-2 h-2 rounded-full bg-green-500" />
+                                        <span className="text-sm text-gray-500">Editando Unidad {cards.length}</span>
                                     </div>
                                 </div>
-                            </article>
-                        ))}
-                    </div>
-                )}
-
-                {/* TAB: CONTEXT */}
-                {activeTab === "info" && (
-                    <div className="max-w-3xl mx-auto">
-                        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
-                            <h3 className="font-bold text-[#004785] dark:text-blue-400 mb-2 flex items-center gap-2 text-lg">
-                                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                Contexto para IA
-                                <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full border border-amber-200 ml-2">
-                                    No se exporta al Docx final
-                                </span>
-                            </h3>
-                            <p className="text-sm text-gray-500 mb-4 leading-relaxed">
-                                Este apartado sirve para que pegues aquí toda la información teórica, fórmulas o apuntes que la Inteligencia Artificial deba "leer" antes de responder a tus preguntas. <br />
-                                <strong>Lo que escribas aquí NO aparecerá en tu documento final.</strong>
-                            </p>
-
-                            <div className="mb-4">
-                                <input
-                                    type="file"
-                                    ref={fileInputRef}
-                                    onChange={handleContextFileUpload}
-                                    accept=".pdf,.docx,.doc,.txt,.png,.jpg,.jpeg"
-                                    className="hidden"
-                                />
-                                <button
-                                    onClick={() => fileInputRef.current?.click()}
-                                    disabled={isUploadingContext}
-                                    className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors text-sm font-medium disabled:opacity-50"
-                                >
-                                    {isUploadingContext ? (
-                                        <>
-                                            <div className="animate-spin h-4 w-4 border-2 border-[#004785] border-t-transparent rounded-full"></div>
-                                            Leyendo archivo...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                                            </svg>
-                                            Adjuntar PDF / DOCX / IMG
-                                        </>
-                                    )}
-                                </button>
-                                <p className="text-xs text-gray-400 mt-1.5 ml-1">
-                                    Se extraerá el texto y se añadirá al final del campo de texto.
-                                </p>
+                                <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-full text-sm text-gray-600">
+                                        <span className="material-symbols-outlined text-[16px]">schedule</span>
+                                        Guardado {lastSaved ? lastSaved.toLocaleTimeString() : "--:--"}
+                                    </div>
+                                </div>
                             </div>
 
-                            {/* ATTACHMENTS LIST */}
-                            {attachments.length > 0 && (
-                                <div className="mb-4 flex flex-wrap gap-2 animate-in fade-in slide-in-from-top-2">
-                                    {attachments.map((att, i) => (
-                                        <div key={i} className="flex items-center gap-2 bg-slate-100 dark:bg-slate-700 px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-600 shadow-sm">
-                                            {/* Icon placeholder based on type */}
-                                            <span className="text-xs font-bold text-slate-500 uppercase">
-                                                {att.name.split('.').pop()?.slice(0, 3) || "FILE"}
-                                            </span>
-                                            <span className="text-xs font-medium text-gray-700 dark:text-gray-200 max-w-[150px] truncate" title={att.name}>
-                                                {att.name}
-                                            </span>
-                                            {/* Remove button */}
+                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                                {/* Structure Panel (Left Column) */}
+                                <div className="lg:col-span-4 xl:col-span-3">
+                                    <div className="bg-white rounded-2xl border border-[var(--border-subtle)] shadow-soft overflow-hidden">
+                                        <div className="flex items-center justify-between p-4 border-b border-gray-100">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm font-bold text-gray-800 uppercase tracking-wider">Estructura</span>
+                                                <span className="text-xs bg-[var(--accent-blue-light)] text-[var(--primary)] font-bold px-2 py-0.5 rounded-full">
+                                                    {cards.length} items
+                                                </span>
+                                            </div>
                                             <button
-                                                onClick={() => setAttachments(prev => prev.filter((_, idx) => idx !== i))}
-                                                className="ml-1 p-0.5 rounded-full hover:bg-slate-200 dark:hover:bg-slate-600 text-gray-400 hover:text-red-500 transition-colors"
+                                                onClick={() => setShowStructure(!showStructure)}
+                                                className="p-1 hover:bg-gray-100 rounded text-gray-400"
                                             >
-                                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                                </svg>
+                                                <span className="material-symbols-outlined text-[18px]">
+                                                    {showStructure ? "settings" : "expand_more"}
+                                                </span>
                                             </button>
                                         </div>
-                                    ))}
+
+                                        {showStructure && (
+                                            <div className="p-2 space-y-1 max-h-[500px] overflow-y-auto">
+                                                {cards.map((card, index) => {
+                                                    const ra = extractRA(card.question);
+                                                    const isActive = expandedCard === index;
+                                                    const isDragging = dragIndex === index;
+                                                    const isDragOver = dragOverIndex === index;
+
+                                                    return (
+                                                        <div
+                                                            key={index}
+                                                            draggable
+                                                            onDragStart={() => handleDragStart(index)}
+                                                            onDragOver={(e) => handleDragOver(e, index)}
+                                                            onDragEnd={handleDragEnd}
+                                                            onClick={() => {
+                                                                setExpandedCard(index);
+                                                                setActiveTab("questions");
+                                                            }}
+                                                            className={`flex items-start gap-3 p-3 rounded-xl cursor-pointer transition-all border-l-4 ${isActive
+                                                                ? "bg-blue-50 border-l-[var(--primary)] shadow-sm"
+                                                                : isDragOver
+                                                                    ? "bg-yellow-50 border-l-yellow-400"
+                                                                    : "bg-white hover:bg-gray-50 border-l-transparent"
+                                                                } ${isDragging ? "opacity-40" : ""}`}
+                                                        >
+                                                            {/* Number badge */}
+                                                            <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 ${card.status === "complete"
+                                                                ? "bg-green-100 text-green-700"
+                                                                : card.status === "review"
+                                                                    ? "bg-yellow-100 text-yellow-700"
+                                                                    : "bg-gray-100 text-gray-500"
+                                                                }`}>
+                                                                {String(index + 1).padStart(2, "0")}
+                                                            </div>
+                                                            {/* Content */}
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className={`text-sm font-semibold truncate ${isActive ? "text-[var(--primary)]" : "text-gray-800"}`}>
+                                                                    {shortLabel(card.question)}
+                                                                </p>
+                                                                <div className="flex items-center gap-2 mt-1">
+                                                                    {ra && <span className="text-[10px] text-gray-400 font-mono">{ra}</span>}
+                                                                    <span className={`inline-flex items-center gap-1 text-[10px] font-medium ${card.status === "complete" ? "text-green-600" : card.status === "review" ? "text-yellow-600" : "text-gray-400"
+                                                                        }`}>
+                                                                        <span className={`w-1.5 h-1.5 rounded-full ${statusColor(card.status)}`} />
+                                                                        {statusLabel(card.status)}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                            {/* Drag handle */}
+                                                            <span className="material-symbols-outlined text-gray-300 text-[16px] mt-1 flex-shrink-0">drag_indicator</span>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
-                            )}
 
-                            <textarea
-                                value={taskContext}
-                                onChange={(e) => setTaskContext(e.target.value)}
-                                className="w-full h-[500px] bg-sky-50 dark:bg-slate-900 border border-sky-100 dark:border-slate-600 rounded-lg p-4 text-base focus:ring-2 focus:ring-[#004785] focus:border-transparent resize-y"
-                                placeholder="Pega aquí el temario, apuntes o contexto..."
-                            />
-                        </div>
-                    </div>
-                )}
-            </div>
+                                {/* Editor Panel (Right Column) */}
+                                <div className="lg:col-span-8 xl:col-span-9 space-y-4">
+                                    {expandedCard !== null && cards[expandedCard] && (() => {
+                                        const card = cards[expandedCard];
+                                        const index = expandedCard;
 
-            {/* Fixed bottom bar */}
-            <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 p-4 shadow-lg z-50">
-                <div className="max-w-4xl mx-auto flex gap-3">
+                                        return (
+                                            <div className="bg-white rounded-2xl border border-[var(--border-subtle)] shadow-soft overflow-hidden">
+                                                {/* Format Toolbar */}
+                                                <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-gray-50/50">
+                                                    <div className="flex items-center gap-1">
+                                                        {/* Paragraph type selector */}
+                                                        <select
+                                                            className="text-sm text-gray-600 bg-transparent border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-1 focus:ring-[var(--primary)] outline-none cursor-pointer"
+                                                            onMouseDown={(e) => e.preventDefault()}
+                                                            onChange={(e) => {
+                                                                document.execCommand("formatBlock", false, e.target.value);
+                                                            }}
+                                                            defaultValue="P"
+                                                        >
+                                                            <option value="P">Parrafo</option>
+                                                            <option value="H1">Titulo 1</option>
+                                                            <option value="H2">Titulo 2</option>
+                                                            <option value="H3">Titulo 3</option>
+                                                        </select>
+
+                                                        <div className="w-px h-6 bg-gray-200 mx-2" />
+
+                                                        {/* Bold */}
+                                                        <button
+                                                            onMouseDown={(e) => { e.preventDefault(); applyFormat("bold"); }}
+                                                            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 text-gray-600 font-bold text-sm transition-colors"
+                                                            title="Negrita (Ctrl+B)"
+                                                        >
+                                                            B
+                                                        </button>
+                                                        {/* Italic */}
+                                                        <button
+                                                            onMouseDown={(e) => { e.preventDefault(); applyFormat("italic"); }}
+                                                            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 text-gray-600 italic text-sm transition-colors"
+                                                            title="Cursiva (Ctrl+I)"
+                                                        >
+                                                            I
+                                                        </button>
+                                                        {/* Underline */}
+                                                        <button
+                                                            onMouseDown={(e) => { e.preventDefault(); applyFormat("underline"); }}
+                                                            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 text-gray-600 underline text-sm transition-colors"
+                                                            title="Subrayado (Ctrl+U)"
+                                                        >
+                                                            U
+                                                        </button>
+
+                                                        <div className="w-px h-6 bg-gray-200 mx-2" />
+
+                                                        {/* Unordered list */}
+                                                        <button
+                                                            onMouseDown={(e) => { e.preventDefault(); applyFormat("insertUnorderedList"); }}
+                                                            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 text-gray-500 transition-colors"
+                                                            title="Lista sin orden"
+                                                        >
+                                                            <span className="material-symbols-outlined text-[18px]">format_list_bulleted</span>
+                                                        </button>
+                                                        {/* Ordered list */}
+                                                        <button
+                                                            onMouseDown={(e) => { e.preventDefault(); applyFormat("insertOrderedList"); }}
+                                                            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 text-gray-500 transition-colors"
+                                                            title="Lista ordenada"
+                                                        >
+                                                            <span className="material-symbols-outlined text-[18px]">format_list_numbered</span>
+                                                        </button>
+                                                    </div>
+
+                                                    <div className="flex items-center gap-2 text-xs text-gray-400">
+                                                        {lastSaved && (
+                                                            <>
+                                                                Ultima edicion hace {Math.max(1, Math.round((Date.now() - lastSaved.getTime()) / 60000))}m
+                                                                <span className="material-symbols-outlined text-[14px]">schedule</span>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* Question title */}
+                                                <div className="px-8 pt-6 pb-2">
+                                                    {editingQuestion === index ? (
+                                                        <textarea
+                                                            value={card.question}
+                                                            onChange={(e) => {
+                                                                updateCard(index, { question: e.target.value });
+                                                                e.target.style.height = 'auto';
+                                                                e.target.style.height = e.target.scrollHeight + 'px';
+                                                            }}
+                                                            onBlur={() => setEditingQuestion(null)}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter' && !e.shiftKey) {
+                                                                    e.preventDefault();
+                                                                    setEditingQuestion(null);
+                                                                }
+                                                                if (e.key === 'Escape') setEditingQuestion(null);
+                                                            }}
+                                                            autoFocus
+                                                            rows={1}
+                                                            className="w-full text-xl font-bold text-gray-900 bg-white border border-[var(--primary)] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--primary-action)] resize-none overflow-hidden"
+                                                            style={{ minHeight: '40px' }}
+                                                            ref={(el) => {
+                                                                if (el) {
+                                                                    el.style.height = 'auto';
+                                                                    el.style.height = el.scrollHeight + 'px';
+                                                                }
+                                                            }}
+                                                        />
+                                                    ) : (
+                                                        <div className="flex items-start gap-3">
+                                                            <h2 className="text-xl font-bold text-gray-900 flex-1">{card.question}</h2>
+                                                            <button
+                                                                onClick={() => setEditingQuestion(index)}
+                                                                className="text-gray-300 hover:text-[var(--primary)] transition-colors mt-1"
+                                                                title="Editar pregunta"
+                                                            >
+                                                                <span className="material-symbols-outlined text-[18px]">edit</span>
+                                                            </button>
+                                                        </div>
+                                                    )}
+
+                                                    {/* RA badge */}
+                                                    {extractRA(card.question) && (
+                                                        <div className="mt-2">
+                                                            <span className="text-xs font-mono bg-gray-100 text-gray-500 px-2 py-1 rounded">
+                                                                IDENTIFICADOR: {extractRA(card.question)}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Rich text answer area */}
+                                                <div className="px-8 py-4">
+                                                    <div
+                                                        contentEditable
+                                                        suppressContentEditableWarning
+                                                        className="w-full min-h-[200px] p-4 bg-white text-gray-700 text-sm rounded-xl border border-gray-200 focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent outline-none transition-shadow leading-relaxed"
+                                                        style={{ whiteSpace: "pre-wrap" }}
+                                                        dangerouslySetInnerHTML={{ __html: card.answer || "" }}
+                                                        onBlur={(e) => {
+                                                            const html = (e.target as HTMLDivElement).innerHTML;
+                                                            updateCard(index, {
+                                                                answer: html,
+                                                                status: (card.status === 'pending' && html.length > 0) ? 'review' : card.status
+                                                            });
+                                                        }}
+                                                        data-placeholder="Escribe aqui la solucion propuesta o las instrucciones adicionales..."
+                                                    />
+                                                </div>
+
+                                                {/* Card actions */}
+                                                <div className="flex items-center justify-between px-8 py-4 border-t border-gray-100">
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={() => updateCard(index, { status: "complete" })}
+                                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors text-xs font-semibold"
+                                                        >
+                                                            <span className="material-symbols-outlined text-[16px]">check</span>
+                                                            Finalizar
+                                                        </button>
+                                                    </div>
+                                                    <div className="flex items-center gap-3">
+                                                        <button
+                                                            onClick={() => updateCard(index, { answer: "", status: "pending" })}
+                                                            className="text-xs text-[var(--text-subtle)] hover:text-[var(--text-main)] font-medium transition-colors"
+                                                        >
+                                                            Limpiar
+                                                        </button>
+                                                        <button
+                                                            onClick={() => askAI(index)}
+                                                            disabled={generatingIndex === index}
+                                                            className="flex items-center gap-1.5 px-4 py-1.5 bg-[var(--primary)] hover:bg-gray-700 text-white text-xs font-semibold rounded shadow-sm transition-colors disabled:opacity-50"
+                                                        >
+                                                            <span className="material-symbols-outlined text-[16px]">smart_toy</span>
+                                                            {generatingIndex === index ? "Generando..." : "Preguntar a IA"}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
+
+                                    {/* Navigation: prev/next */}
+                                    {expandedCard !== null && (
+                                        <div className="flex justify-between">
+                                            <button
+                                                onClick={() => setExpandedCard(Math.max(0, (expandedCard ?? 0) - 1))}
+                                                disabled={expandedCard === 0}
+                                                className="flex items-center gap-1 text-sm text-gray-500 hover:text-[var(--primary)] transition-colors disabled:opacity-30"
+                                            >
+                                                <span className="material-symbols-outlined text-[18px]">chevron_left</span>
+                                                Anterior
+                                            </button>
+                                            <span className="text-sm text-gray-400">{(expandedCard ?? 0) + 1} / {cards.length}</span>
+                                            <button
+                                                onClick={() => setExpandedCard(Math.min(cards.length - 1, (expandedCard ?? 0) + 1))}
+                                                disabled={expandedCard === cards.length - 1}
+                                                className="flex items-center gap-1 text-sm text-gray-500 hover:text-[var(--primary)] transition-colors disabled:opacity-30"
+                                            >
+                                                Siguiente
+                                                <span className="material-symbols-outlined text-[18px]">chevron_right</span>
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </>
+                    )
+                    }
+
+                    {/* Context Tab */}
+                    {
+                        activeTab === "context" && (
+                            <div className="max-w-3xl mx-auto">
+                                <div className="bg-white rounded-xl shadow-card border border-[var(--border-subtle)] p-6">
+                                    <h3 className="font-bold text-[var(--primary)] mb-2 flex items-center gap-2 text-lg">
+                                        <span className="material-symbols-outlined text-xl">psychology</span>
+                                        Contexto para IA
+                                        <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full border border-amber-200 ml-2">
+                                            No se exporta al Docx final
+                                        </span>
+                                    </h3>
+                                    <p className="text-sm text-[var(--text-subtle)] mb-4 leading-relaxed">
+                                        Este apartado sirve para que pegues aqui toda la informacion teorica, formulas o apuntes que la Inteligencia Artificial deba &quot;leer&quot; antes de responder a tus preguntas. <br />
+                                        <strong>Lo que escribas aqui NO aparecera en tu documento final.</strong>
+                                    </p>
+
+                                    <div className="mb-4">
+                                        <input
+                                            type="file"
+                                            ref={fileInputRef}
+                                            onChange={handleContextFileUpload}
+                                            accept=".pdf,.docx,.doc,.txt,.png,.jpg,.jpeg"
+                                            className="hidden"
+                                        />
+                                        <button
+                                            onClick={() => fileInputRef.current?.click()}
+                                            disabled={isUploadingContext}
+                                            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium disabled:opacity-50"
+                                        >
+                                            {isUploadingContext ? (
+                                                <>
+                                                    <div className="animate-spin h-4 w-4 border-2 border-[var(--primary)] border-t-transparent rounded-full"></div>
+                                                    Leyendo archivo...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <span className="material-symbols-outlined text-lg">upload_file</span>
+                                                    Adjuntar PDF / DOCX / IMG
+                                                </>
+                                            )}
+                                        </button>
+                                        <p className="text-xs text-gray-400 mt-1.5 ml-1">
+                                            Se extraera el texto y se anadira al final del campo de texto.
+                                        </p>
+                                    </div>
+
+                                    {/* Attachments List */}
+                                    {attachments.length > 0 && (
+                                        <div className="mb-4 flex flex-wrap gap-2">
+                                            {attachments.map((att, i) => (
+                                                <div key={i} className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200 shadow-sm">
+                                                    <span className="text-xs font-bold text-slate-500 uppercase">
+                                                        {att.name.split('.').pop()?.slice(0, 3) || "FILE"}
+                                                    </span>
+                                                    <span className="text-xs font-medium text-gray-700 max-w-[150px] truncate" title={att.name}>
+                                                        {att.name}
+                                                    </span>
+                                                    <button
+                                                        onClick={() => setAttachments(prev => prev.filter((_, idx) => idx !== i))}
+                                                        className="ml-1 p-0.5 rounded-full hover:bg-slate-200 text-gray-400 hover:text-red-500 transition-colors"
+                                                    >
+                                                        <span className="material-symbols-outlined text-sm">close</span>
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    <textarea
+                                        value={taskContext}
+                                        onChange={(e) => setTaskContext(e.target.value)}
+                                        className="w-full h-[500px] bg-sky-50 border border-sky-100 rounded-lg p-4 text-base focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent resize-y"
+                                        placeholder="Pega aqui el temario, apuntes o contexto..."
+                                    />
+                                </div>
+                            </div>
+                        )
+                    }
+
+                    {/* Settings Tab */}
+                    {
+                        activeTab === "settings" && (
+                            <div className="max-w-3xl mx-auto">
+                                <div className="bg-white rounded-xl shadow-card border border-[var(--border-subtle)] p-6">
+                                    <h3 className="font-bold text-[var(--primary)] mb-4 flex items-center gap-2 text-lg">
+                                        <span className="material-symbols-outlined text-xl">settings</span>
+                                        Configuracion
+                                    </h3>
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Plantilla seleccionada</label>
+                                            <p className="text-sm text-[var(--text-subtle)]">{templateType === "FOC" ? "Instituto FOC" : "Generica"}</p>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Total de preguntas</label>
+                                            <p className="text-sm text-[var(--text-subtle)]">{cards.length} preguntas detectadas</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )
+                    }
+                </div >
+            </main >
+
+            {/* Footer */}
+            <footer className="fixed bottom-0 left-64 right-0 h-16 bg-white border-t border-[var(--border-subtle)] flex items-center justify-between px-8 z-20">
+                <div className="flex items-center gap-3">
                     <button
-                        onClick={() => { saveAnswers(cards); saveMetadata(); }}
-                        disabled={isSaving}
-                        className="flex-1 bg-white dark:bg-slate-700 text-gray-700 dark:text-gray-200 border border-slate-200 dark:border-slate-600 font-semibold py-3.5 px-4 rounded-xl shadow-sm hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors flex items-center justify-center gap-2"
+                        className="flex items-center gap-2 px-5 py-2 bg-[var(--accent-blue-light)] text-[var(--primary)] rounded-lg font-semibold text-sm hover:bg-[var(--primary)] hover:text-white transition-colors"
                     >
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
-                        </svg>
-                        {isSaving ? "Guardando..." : "Guardar Todo"}
+                        <span className="material-symbols-outlined text-[18px]">find_in_page</span>
+                        Localizar en PDF fuente
                     </button>
+                </div>
+
+                <div className="flex items-center gap-3">
                     <Link
                         href={`/app/preview?id=${documentId}`}
-                        className="flex-[2] bg-[#004785] text-white font-semibold py-3.5 px-4 rounded-xl shadow-lg shadow-blue-500/30 hover:bg-blue-800 transition-colors flex items-center justify-center gap-2"
+                        className="flex items-center gap-2 px-5 py-2 border border-[var(--border-subtle)] text-[var(--text-main)] rounded-lg font-semibold text-sm hover:bg-gray-50 transition-colors"
                     >
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                        </svg>
+                        <span className="material-symbols-outlined text-[18px]">visibility</span>
                         Previsualizar
                     </Link>
+                    <button
+                        onClick={validateAll}
+                        disabled={isValidating || isSaving}
+                        className="flex items-center gap-2 px-5 py-2 bg-[var(--primary)] text-white rounded-lg font-bold text-sm hover:opacity-90 transition-all disabled:opacity-50 shadow-sm"
+                    >
+                        <span className="material-symbols-outlined text-[18px]">verified</span>
+                        {isValidating ? "Validando..." : isSaving ? "Guardando..." : "Validar Contenido"}
+                    </button>
                 </div>
-            </div>
+            </footer>
         </div >
     );
 }
@@ -556,7 +938,7 @@ export default function EditorPage() {
     return (
         <Suspense fallback={
             <div className="flex items-center justify-center min-h-[60vh]">
-                <div className="animate-spin h-8 w-8 border-4 border-[#004785] border-t-transparent rounded-full"></div>
+                <div className="animate-spin h-8 w-8 border-4 border-[var(--primary)] border-t-transparent rounded-full"></div>
             </div>
         }>
             <EditorContent />

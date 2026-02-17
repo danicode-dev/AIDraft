@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 // @ts-ignore
 import * as mammoth from "mammoth";
-const pdfParse = require("pdf-parse");
+import { PDFParse } from "pdf-parse";
 // @ts-ignore
 const Tesseract = require("tesseract.js");
 
 // Question detection patterns
 const HEADER_PATTERNS = [
     /^\s*\(?RA\d+_[a-z]\)?/i,           // "RA04_a"
+    /^\s*\(?RA\s*\d+/i,                 // "(RA4", "RA4", "(RA 04" - Broader RA pattern
     /^\s*R\.?A\.?\s*\d+/i,              // "R.A. 4"
     /^\s*Actividad\s+\d+/i,             // "Actividad 1"
     /^\s*Pregunta\s*\d+/i,              // "Pregunta 1"
@@ -91,13 +92,14 @@ export async function POST(request: NextRequest) {
             // Parse based on file type
             if (fileName.endsWith(".pdf")) {
                 try {
-                    console.log("Parsing PDF with pdf-parse...");
-                    const pdfData = await pdfParse(buffer);
-                    text = pdfData.text;
+                    console.log("Parsing PDF with pdf-parse v2...");
+                    const parser = new PDFParse({ data: new Uint8Array(buffer) });
+                    const result = await parser.getText();
+                    text = result.text;
+                    await parser.destroy();
 
                     if (!text || text.trim().length < 50) {
                         console.log("PDF text empty/short. Check for OCR needs.");
-                        // Optional warning if text is suspect
                         if (text.trim().length < 10) {
                             text += "\n[AVISO: No se detectó texto seleccionable.]";
                         }
@@ -143,7 +145,7 @@ export async function POST(request: NextRequest) {
         const questions = detectQuestions(text);
 
         return NextResponse.json({
-            text: text.slice(0, 50000), // Limit text size
+            text: text.slice(0, 500000), // Limit text size (500k chars ~ 100-200 pages)
             questions,
         });
 

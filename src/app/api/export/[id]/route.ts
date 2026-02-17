@@ -43,7 +43,8 @@ export async function POST(
 
         // Get export metadata from request body
         const body = await request.json().catch(() => ({}));
-        const { asignatura, tema, apellidos, nombre, dni } = body;
+        console.log("DOCUMENT EXPORT DEBUG - Request Body:", body);
+        const { asignatura, tema, apellidos, nombre, dni, coverTitulo, coverSubtitulo } = body;
 
         // Get document
         const doc = await prisma.document.findFirst({
@@ -55,12 +56,22 @@ export async function POST(
         });
 
         if (!doc) {
+            console.error("DOCUMENT EXPORT DEBUG - Document not found", { id, userId: session.user.id });
             return NextResponse.json({ error: "Documento no encontrado" }, { status: 404 });
         }
 
+        console.log("DOCUMENT EXPORT DEBUG - Document found:", {
+            id: doc.id,
+            templateType: doc.templateType,
+            questionsLength: doc.questionsJson?.length,
+        });
+
         const questions: string[] = JSON.parse(doc.questionsJson);
         const answers: Record<number, string> = JSON.parse(doc.answersJson);
-        const isFOC = doc.templateType === "FOC";
+        // Case insensitive FOC check
+        const isFOC = doc.templateType?.toUpperCase().includes("FOC");
+        const isCustom = doc.templateType?.toUpperCase().includes("CUSTOM");
+        console.log("DOCUMENT EXPORT DEBUG - isFOC:", isFOC, "isCustom:", isCustom);
 
         // Extract RA code from question (Synced with Parser)
         const extractRA = (question: string): string | null => {
@@ -207,13 +218,14 @@ export async function POST(
                 })
             );
 
-            // 2. Center: TITLE (Subject + Topic)
+            // 2. Center: TITLE (custom or generated)
+            const titleText = coverTitulo || `${subjectText} Y ${topicText}`;
             children.push(
                 new Paragraph({
                     alignment: AlignmentType.CENTER,
                     children: [
                         new TextRun({
-                            text: `${subjectText} Y ${topicText}`,
+                            text: titleText.toUpperCase(),
                             bold: true,
                             font: "Arial",
                             size: 80, // 40pt
@@ -228,6 +240,9 @@ export async function POST(
             );
 
             // 3. Bottom Right: Student Name
+            const studentNameParts = [alumnoApellidos, alumnoNombre].filter(p => p && p !== "APELLIDOS" && p !== "NOMBRE");
+            const studentNameText = studentNameParts.length > 0 ? studentNameParts.join(" ").toUpperCase() : "APELLIDOS NOMBRE";
+
             children.push(
                 new Paragraph({
                     alignment: AlignmentType.RIGHT,
@@ -245,7 +260,7 @@ export async function POST(
                     alignment: AlignmentType.RIGHT,
                     children: [
                         new TextRun({
-                            text: `${alumnoApellidos.toUpperCase()} ${alumnoNombre.toUpperCase()}`,
+                            text: studentNameText,
                             bold: true,
                             font: "Arial",
                             size: 56, // 28pt
@@ -253,19 +268,24 @@ export async function POST(
                         }),
                     ],
                 }),
-                new Paragraph({
-                    alignment: AlignmentType.RIGHT,
-                    children: [
-                        new TextRun({
-                            text: alumnoDni.toUpperCase(),
-                            bold: true,
-                            font: "Arial",
-                            size: 56, // 28pt
-                            color: "004785",
-                        }),
-                    ],
-                })
             );
+
+            if (alumnoDni && alumnoDni !== "DNI") {
+                children.push(
+                    new Paragraph({
+                        alignment: AlignmentType.RIGHT,
+                        children: [
+                            new TextRun({
+                                text: alumnoDni.toUpperCase(),
+                                bold: true,
+                                font: "Arial",
+                                size: 56,
+                                color: "004785",
+                            }),
+                        ],
+                    })
+                );
+            }
 
             // Footer removed - user will add custom one
 
@@ -339,6 +359,82 @@ export async function POST(
             );
         }
 
+        // ========== CUSTOM TEMPLATE COVER ==========
+        if (isCustom) {
+            const titleText = (coverTitulo || "TITULO DEL DOCUMENTO").toUpperCase();
+            const authorText = nombre || "";
+
+            // Spacing before title
+            children.push(
+                new Paragraph({
+                    children: [new TextRun({ text: "", break: 6 })],
+                })
+            );
+
+            // Big centered title
+            children.push(
+                new Paragraph({
+                    alignment: AlignmentType.CENTER,
+                    children: [
+                        new TextRun({
+                            text: titleText,
+                            bold: true,
+                            font: "Arial",
+                            size: 80,
+                            color: "30475E",
+                        }),
+                    ],
+                    spacing: { before: 2000, after: 600 },
+                })
+            );
+
+            // Subtitle if provided
+            if (coverSubtitulo) {
+                children.push(
+                    new Paragraph({
+                        alignment: AlignmentType.CENTER,
+                        children: [
+                            new TextRun({
+                                text: coverSubtitulo,
+                                font: "Arial",
+                                size: 36,
+                                color: "666666",
+                            }),
+                        ],
+                        spacing: { after: 1500 },
+                    })
+                );
+            }
+
+            // Author name (bottom right)
+            if (authorText) {
+                children.push(
+                    new Paragraph({
+                        children: [new TextRun({ text: "", break: 4 })],
+                    }),
+                    new Paragraph({
+                        alignment: AlignmentType.RIGHT,
+                        children: [
+                            new TextRun({
+                                text: authorText,
+                                bold: true,
+                                font: "Arial",
+                                size: 32,
+                                color: "30475E",
+                            }),
+                        ],
+                    })
+                );
+            }
+
+            // Page break after cover
+            children.push(
+                new Paragraph({
+                    children: [new PageBreak()],
+                })
+            );
+        }
+
         // ========== TABLE OF CONTENTS (Manual Placeholder) ==========
         children.push(
             new Paragraph({
@@ -374,10 +470,10 @@ export async function POST(
             groupedByRA[ra].forEach((item, idx) => {
                 children.push(
                     new Paragraph({
+                        style: "Sumario1",
                         children: [
                             new TextRun({
                                 text: `${item.question} `, // Include FULL question text
-                                size: 22, // Slightly smaller for TOC
                             }),
                             new TextRun({
                                 text: `................................................ (pág. manual)`,
@@ -420,31 +516,101 @@ export async function POST(
                 // Question heading
                 children.push(
                     new Paragraph({
-                        heading: HeadingLevel.HEADING_2,
+                        style: "Titulo1",
                         children: [
                             new TextRun({
                                 text: item.question,
-                                bold: true,
                             }),
                         ],
                     })
                 );
 
-                // Answer
+                // Answer - parse HTML for formatting (bold, italic, underline)
                 if (item.answer) {
-                    const answerLines = item.answer.split("\n");
-                    answerLines.forEach((line) => {
-                        children.push(
-                            new Paragraph({
-                                children: [
-                                    new TextRun({
-                                        text: line,
-                                    }),
-                                ],
-                                spacing: { after: 100 },
-                            })
-                        );
-                    });
+                    const parseHtmlToRuns = (html: string): Paragraph[] => {
+                        const paragraphs: Paragraph[] = [];
+                        // Split into block-level chunks (by <br>, <p>, <div>, newlines)
+                        const blocks = html
+                            .replace(/<\/?(p|div|br\s*\/?)\s*>/gi, "\n")
+                            .replace(/<h[1-3][^>]*>(.*?)<\/h[1-3]>/gi, "\n$1\n")
+                            .split("\n");
+
+                        for (const block of blocks) {
+                            const trimmed = block.trim();
+                            if (trimmed === "") continue;
+
+                            const runs: TextRun[] = [];
+                            // Parse inline formatting: <b>/<strong>, <i>/<em>, <u>
+                            let remaining = trimmed;
+                            // Regex to find HTML tags
+                            const tagRegex = /<(\/?)(\w+)[^>]*>/g;
+                            let lastIndex = 0;
+                            let bold = false;
+                            let italic = false;
+                            let underlined = false;
+                            let match;
+
+                            // Collect segments
+                            const segments: { text: string; bold: boolean; italic: boolean; underline: boolean }[] = [];
+
+                            while ((match = tagRegex.exec(remaining)) !== null) {
+                                // Text before this tag
+                                if (match.index > lastIndex) {
+                                    const text = remaining.substring(lastIndex, match.index).replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"');
+                                    if (text) {
+                                        segments.push({ text, bold, italic, underline: underlined });
+                                    }
+                                }
+
+                                const isClosing = match[1] === "/";
+                                const tag = match[2].toLowerCase();
+
+                                if (tag === "b" || tag === "strong") bold = !isClosing;
+                                else if (tag === "i" || tag === "em") italic = !isClosing;
+                                else if (tag === "u") underlined = !isClosing;
+
+                                lastIndex = match.index + match[0].length;
+                            }
+
+                            // Remaining text after last tag
+                            if (lastIndex < remaining.length) {
+                                const text = remaining.substring(lastIndex).replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"');
+                                if (text) {
+                                    segments.push({ text, bold, italic, underline: underlined });
+                                }
+                            }
+
+                            // If no segments parsed, just add the raw text
+                            if (segments.length === 0) {
+                                const cleanText = trimmed.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&");
+                                if (cleanText) {
+                                    segments.push({ text: cleanText, bold: false, italic: false, underline: false });
+                                }
+                            }
+
+                            for (const seg of segments) {
+                                runs.push(new TextRun({
+                                    text: seg.text,
+                                    bold: seg.bold || undefined,
+                                    italics: seg.italic || undefined,
+                                    underline: seg.underline ? {} : undefined,
+                                }));
+                            }
+
+                            if (runs.length > 0) {
+                                paragraphs.push(new Paragraph({
+                                    style: "TextoUser",
+                                    children: runs,
+                                    spacing: { after: 100 },
+                                }));
+                            }
+                        }
+
+                        return paragraphs;
+                    };
+
+                    const answerParagraphs = parseHtmlToRuns(item.answer);
+                    children.push(...answerParagraphs);
                 } else {
                     children.push(
                         new Paragraph({
@@ -477,6 +643,36 @@ export async function POST(
                         run: {
                             font: "Calibri",
                             size: 24, // 12pt
+                        },
+                    },
+                    {
+                        id: "Sumario1",
+                        name: "Sumario 1",
+                        basedOn: "Normal",
+                        run: {
+                            font: "Calibri",
+                            size: 22, // 11pt
+                        },
+                    },
+                    {
+                        id: "Titulo1",
+                        name: "Título 1",
+                        basedOn: "Normal",
+                        next: "Normal",
+                        run: {
+                            font: "Cambria",
+                            size: 32, // 16pt
+                            bold: true,
+                            color: "004785",
+                        },
+                    },
+                    {
+                        id: "TextoUser",
+                        name: "Texto (user)",
+                        basedOn: "Normal",
+                        run: {
+                            font: "Arial",
+                            size: 26, // 13pt
                         },
                     },
                 ],

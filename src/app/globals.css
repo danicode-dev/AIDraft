@@ -1,6 +1,25 @@
 @import "tailwindcss";
 
+/* Force light mode - disable dark mode completely */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: light only;
+  }
+}
+
 :root {
+  /* Design System Colors - Always Light Mode */
+  --primary: #30475E;
+  --primary-action: #F05454;
+  --background-app: #F5F5F5;
+  --surface-card: #ffffff;
+  --border-subtle: #e5e7eb;
+  --text-main: #121212;
+  --text-subtle: #64748b;
+  --accent-blue-light: #e8eef5;
+  --accent-blue-text: #30475E;
+
+  /* Legacy support */
   --background: #ffffff;
   --foreground: #171717;
 }
@@ -8,19 +27,122 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-primary: var(--primary);
+  --color-primary-action: var(--primary-action);
+  --color-background-app: var(--background-app);
+  --color-surface-card: var(--surface-card);
+  --color-border-subtle: var(--border-subtle);
+  --color-text-main: var(--text-main);
+  --color-text-subtle: var(--text-subtle);
+  --color-accent-blue-light: var(--accent-blue-light);
+  --color-accent-blue-text: var(--accent-blue-text);
+  --font-sans: 'Inter', sans-serif;
+  --font-display: 'Inter', sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Force light mode colors everywhere */
+html {
+  color-scheme: light only;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--background-app) !important;
+  color: var(--text-main) !important;
+  font-family: 'Inter', sans-serif;
+}
+
+/* Override Tailwind dark mode classes - force light mode */
+.dark\:bg-slate-900,
+.dark\:bg-slate-800,
+.dark\:bg-gray-900,
+.dark\:bg-gray-800 {
+  background-color: var(--surface-card) !important;
+}
+
+.dark\:text-white,
+.dark\:text-gray-100,
+.dark\:text-gray-200,
+.dark\:text-gray-300 {
+  color: var(--text-main) !important;
+}
+
+.dark\:text-gray-400,
+.dark\:text-gray-500 {
+  color: var(--text-subtle) !important;
+}
+
+.dark\:border-slate-600,
+.dark\:border-slate-700,
+.dark\:border-gray-600,
+.dark\:border-gray-700 {
+  border-color: var(--border-subtle) !important;
+}
+
+/* Material Symbols configuration */
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'liga';
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+.filled-icon {
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+/* Scrollbar utilities */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Card shadow utilities */
+.shadow-soft {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+}
+
+.shadow-card {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
+}
+
+/* ContentEditable placeholder */
+[contenteditable=true]:empty:before {
+  content: attr(data-placeholder);
+  color: #9ca3af;
+  pointer-events: none;
+  font-style: italic;
+}
+
+/* Custom scrollbar for panels */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 2px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
 }

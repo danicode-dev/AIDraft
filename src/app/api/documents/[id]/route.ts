@@ -14,7 +14,7 @@ export async function PATCH(
 
         const { id } = await params;
         const body = await request.json();
-        const { answers, status, taskContext, taskTips, taskRubric } = body;
+        const { answers, status, taskContext, taskTips, taskRubric, questions } = body;
 
         // Verify ownership
         const document = await prisma.document.findFirst({
@@ -33,6 +33,10 @@ export async function PATCH(
 
         if (answers !== undefined) {
             updateData.answersJson = JSON.stringify(answers);
+        }
+
+        if (questions !== undefined) {
+            updateData.questionsJson = JSON.stringify(questions);
         }
 
         if (status !== undefined) {
