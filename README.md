@@ -19,33 +19,23 @@ En el entorno educativo actual, los docentes dedican una cantidad significativa 
 
 ## 🛠️ Stack Tecnológico
 
-Este proyecto ha sido desarrollado utilizando las tecnologías más modernas del ecosistema web para garantizar rendimiento, escalabilidad y una excelente experiencia de usuario:
-
-| Tecnología | Descripción |
-|------------|-------------|
-| **Next.js 16** | Framework React de última generación para frontend y backend (App Router). |
-| **TypeScript** | Superset de JavaScript que añade tipado estático para un código más robusto. |
-| **Prisma** | ORM moderno para la gestión de la base de datos y migraciones. |
-| **PostgreSQL / SQLite** | Base de datos relacional (SQLite en local, PostgreSQL en producción). |
-| **NextAuth.js** | Sistema completo de autenticación y gestión de sesiones. |
-| **Groq SDK** | Integración de Inteligencia Artificial para el procesamiento de lenguaje natural. |
-| **Tailwind CSS** | Framework de utilidades CSS para un diseño rápido y responsive. |
-| **Zod** | Librería de validación de esquemas y tipos en tiempo de ejecución. |
+-   **Frontend**: Next.js 16 (App Router), React, Tailwind CSS.
+-   **Backend**: API Routes (Serverless), NextAuth.js v5.
+-   **Base de Datos**: Prisma ORM, PostgreSQL (Prod) / SQLite (Dev).
+-   **IA**: Integración con LLMs vía Groq Cloud.
+-   **Lenguaje**: TypeScript (100% tipado estricto).
 
 ## 📂 Estructura del Proyecto
 
-La arquitectura del proyecto sigue las mejores prácticas de Next.js, manteniendo una separación clara de responsabilidades:
+Arquitectura limpia y modular basada en `src`:
 
 ```bash
 /src
-  /app          # Rutas, páginas y lógica del servidor (App Router)
-    /api        # Endpoints de la API interna (Auth, Parsing, AI)
-    /app        # Vistas protegidas de la aplicación (Dashboard, Editor)
-    /login      # Vista pública de autenticación
-  /components   # Biblioteca de componentes UI reutilizables
-  /lib          # Utilidades, configuración de Prisma y funciones auxiliares
-/prisma         # Esquema de base de datos y seeds
-/public         # Activos estáticos
+  /app          # Lógica de negocio y rutas
+  /components   # Interfaz de usuario (UI)
+  /lib          # Configuración y utilidades
+/prisma         # Esquema de datos
+/public         # Estáticos
 ```
 
 ## 🗄️ Modelo de Datos
