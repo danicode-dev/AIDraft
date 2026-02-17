@@ -43,13 +43,13 @@ function PreviewContent() {
 
     // Load user metadata from localStorage on mount
     useEffect(() => {
-        const saved = localStorage.getItem("docututor_user_meta");
+        const saved = localStorage.getItem("aidraft_user_meta");
         if (saved) {
             try {
                 setUserMeta(JSON.parse(saved));
             } catch { /* ignore */ }
         }
-        const savedCover = localStorage.getItem("docututor_cover_edits");
+        const savedCover = localStorage.getItem("aidraft_cover_edits");
         if (savedCover) {
             try {
                 setCoverEdits(JSON.parse(savedCover));
@@ -61,13 +61,13 @@ function PreviewContent() {
     const updateUserMeta = (field: string, value: string) => {
         const updated = { ...userMeta, [field]: value };
         setUserMeta(updated);
-        localStorage.setItem("docututor_user_meta", JSON.stringify(updated));
+        localStorage.setItem("aidraft_user_meta", JSON.stringify(updated));
     };
 
     const updateCoverEdit = (field: keyof typeof coverEdits, value: string) => {
         const updated = { ...coverEdits, [field]: value };
         setCoverEdits(updated);
-        localStorage.setItem("docututor_cover_edits", JSON.stringify(updated));
+        localStorage.setItem("aidraft_cover_edits", JSON.stringify(updated));
     };
 
     // Sanitize filename for Windows/Mac compatibility
@@ -100,7 +100,7 @@ function PreviewContent() {
     const handleMetaChange = (field: keyof typeof userMeta, value: string) => {
         const updatedMeta = { ...userMeta, [field]: value };
         setUserMeta(updatedMeta);
-        localStorage.setItem("docututor_user_meta", JSON.stringify(updatedMeta));
+        localStorage.setItem("aidraft_user_meta", JSON.stringify(updatedMeta));
         setFilename(generateFilenameFromMeta(updatedMeta));
     };
 

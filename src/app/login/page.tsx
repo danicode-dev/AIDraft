@@ -43,7 +43,7 @@ export default function LoginPage() {
                     </div>
                     <div>
                         <h1 className="font-bold text-2xl tracking-tight text-gray-900 dark:text-white leading-none">
-                            DocuTutor
+                            AIDraft
                         </h1>
                         <span className="text-xs font-medium text-[var(--primary-action)] uppercase tracking-wider">
                             Acceso Privado
@@ -145,7 +145,7 @@ export default function LoginPage() {
                 </div>
 
                 <p className="text-center text-xs text-gray-400 dark:text-gray-500 mt-6">
-                    DocuTutor © 2026 - Generador de Borradores
+                    AIDraft © 2026 - Generador de Borradores
                 </p>
             </div>
         </div>

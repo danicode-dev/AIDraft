@@ -4,7 +4,7 @@ import bcrypt from "bcrypt";
 const prisma = new PrismaClient();
 
 async function main() {
-    const adminEmail = process.env.ADMIN_EMAIL || "admin@docututor.com";
+    const adminEmail = process.env.ADMIN_EMAIL || "admin@aidraft.com";
     const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
 
     // Check if admin already exists

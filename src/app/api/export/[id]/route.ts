@@ -738,7 +738,7 @@ export async function POST(
         return new NextResponse(new Uint8Array(buffer), {
             headers: {
                 "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                "Content-Disposition": `attachment; filename = "DocuTutor_Tarea_${new Date().toISOString().slice(0, 10)}.docx"`,
+                "Content-Disposition": `attachment; filename = "AIDraft_Tarea_${new Date().toISOString().slice(0, 10)}.docx"`,
             },
         });
     } catch (error) {
