@@ -1,37 +1,65 @@
-# DocuTutor - Generador de Borradores Educativos
+# IDraft — Generador Inteligente de Documentos Académicos
 
-DocuTutor es una herramienta diseñada para agilizar la creación de material didáctico. Permite a los docentes subir documentación técnica (PDF, TXT) y generar borradores de tareas educativas estructuradas, incluyendo contexto, recomendaciones pedagógicas y rúbricas de evaluación, todo ello potenciado por Inteligencia Artificial.
+AIDraft es una aplicación web full-stack que automatiza la creación de documentos académicos (tareas, exámenes, trabajos) a partir de un enunciado en PDF o texto. Sube tu enunciado, selecciona una plantilla, y la IA genera las respuestas automáticamente. Edita, personaliza la portada, y exporta a Word (.docx) con un solo clic.
 
-## Características Principales
+## 🎯 ¿Qué problema resuelve?
 
-- **Análisis de Documentos**: Extracción y procesamiento de texto desde archivos PDF y TXT.
-- **Generación de Contenido Pedagógico**: Creación automática de enunciados de tareas basados en la documentación aportada.
-- **Editor Integrado**: Interfaz de edición de texto enriquecido para refinar el contenido generado.
-- **Exportación**: Capacidad de exportar el resultado final a formato DOCX para su uso inmediato.
-- **Gestión de Proyectos**: Organización de documentos por asignaturas y temas.
+En el entorno educativo actual, los docentes dedican una cantidad significativa de tiempo a tareas repetitivas y administrativas, como la creación de formatos, rúbricas y la estructuración de documentos base para sus clases. 
 
-## Tecnologías Utilizadas
+**IDraft** elimina esta carga de trabajo manual. Al transformar automáticamente la documentación técnica o los enunciados en bruto en materiales didácticos listos para usar, permite a los profesores centrarse en lo más importante: la calidad de la enseñanza y la atención a sus alumnos. Reduce horas de maquetación y redacción a simples segundos de procesamiento.
 
-Este proyecto está construido con un stack tecnológico moderno y robusto:
+## 🔄 Flujo de la Aplicación
 
-| Tecnología | Propósito |
-|------------|-----------|
-| **Next.js 16** | Framework principal para frontend y backend (App Router). |
-| **TypeScript** | Lenguaje de programación para garantizar tipado estático y escalabilidad. |
-| **Prisma** | ORM para la gestión y modelado de la base de datos (SQLite / PostgreSQL). |
-| **NextAuth.js** | Sistema de autenticación seguro y flexible. |
-| **Groq SDK** | Integración con modelos de lenguaje (LLMs) para la generación de texto. |
-| **Tailwind CSS** | Framework de estilos para un diseño de interfaz adaptable y consistente. |
+1.  **Inicio de Sesión**: Acceso seguro a la plataforma mediante credenciales.
+2.  **Subida de Documentos**: El usuario carga un archivo (PDF o TXT) con el contenido base o el enunciado de la tarea.
+3.  **Selección de Plantilla**: Se elige el tipo de documento a generar (ej. FOC, Genérico) según las necesidades.
+4.  **Procesamiento IA**: El sistema analiza el texto, extrae los puntos clave y genera una estructura pedagógica completa (contexto, tareas, rúbrica).
+5.  **Edición en Vivo**: El docente revisa el borrador generado en un editor de texto enriquecido, ajustando el contenido si es necesario.
+6.  **Exportación**: Con un solo clic, se descarga el documento final en formato Word (.docx), perfectamente maquetado y listo para entregar.
 
-## Instalación y Despliegue
+## 🛠️ Stack Tecnológico
 
-### Requisitos Previos
+Este proyecto ha sido desarrollado utilizando las tecnologías más modernas del ecosistema web para garantizar rendimiento, escalabilidad y una excelente experiencia de usuario:
 
-- Node.js 18 o superior.
-- Una base de datos (SQLite para desarrollo local, PostgreSQL para producción).
-- Clave de API de Groq Cloud.
+| Tecnología | Descripción |
+|------------|-------------|
+| **Next.js 16** | Framework React de última generación para frontend y backend (App Router). |
+| **TypeScript** | Superset de JavaScript que añade tipado estático para un código más robusto. |
+| **Prisma** | ORM moderno para la gestión de la base de datos y migraciones. |
+| **PostgreSQL / SQLite** | Base de datos relacional (SQLite en local, PostgreSQL en producción). |
+| **NextAuth.js** | Sistema completo de autenticación y gestión de sesiones. |
+| **Groq SDK** | Integración de Inteligencia Artificial para el procesamiento de lenguaje natural. |
+| **Tailwind CSS** | Framework de utilidades CSS para un diseño rápido y responsive. |
+| **Zod** | Librería de validación de esquemas y tipos en tiempo de ejecución. |
 
-### Configuración Local
+## 📂 Estructura del Proyecto
+
+La arquitectura del proyecto sigue las mejores prácticas de Next.js, manteniendo una separación clara de responsabilidades:
+
+```bash
+/src
+  /app          # Rutas, páginas y lógica del servidor (App Router)
+    /api        # Endpoints de la API interna (Auth, Parsing, AI)
+    /app        # Vistas protegidas de la aplicación (Dashboard, Editor)
+    /login      # Vista pública de autenticación
+  /components   # Biblioteca de componentes UI reutilizables
+  /lib          # Utilidades, configuración de Prisma y funciones auxiliares
+/prisma         # Esquema de base de datos y seeds
+/public         # Activos estáticos
+```
+
+## 🗄️ Modelo de Datos
+
+El sistema utiliza un modelo relacional eficiente gestionado por Prisma:
+
+-   **User**: Gestiona la identidad y credenciales de los usuarios.
+-   **Project**: Agrupa los documentos creados por un usuario.
+-   **Document**: Núcleo de la aplicación. Almacena el texto fuente, las configuraciones, el estado del borrador y el contenido generado (JSON).
+-   **DocumentVersion**: Historial de cambios y versiones de los documentos.
+
+## 🚀 Instalación Gratuita
+
+Puedes ejecutar este proyecto en tu máquina local para desarrollo o pruebas:
 
 1.  **Clonar el repositorio**:
     ```bash
@@ -44,44 +72,17 @@ Este proyecto está construido con un stack tecnológico moderno y robusto:
     npm install
     ```
 
-3.  **Configurar variables de entorno**:
-    Crea un archivo `.env` en la raíz del proyecto basándote en `.env.example`:
-    ```env
-    DATABASE_URL="file:./dev.db"
-    AUTH_SECRET="tu-secreto-generado"
-    GROQ_API_KEY="tu-api-key-de-groq"
-    ```
+3.  **Configurar entorno**:
+    Crea un archivo `.env` basado en el ejemplo proporcionado y configura tu base de datos local.
 
-4.  **Inicializar la base de datos**:
+4.  **Inicializar base de datos**:
     ```bash
-    npx prisma migrate dev --name init
+    npx prisma migrate dev
     npx tsx prisma/seed.ts
     ```
 
-5.  **Ejecutar en desarrollo**:
+5.  **Iniciar servidor**:
     ```bash
     npm run dev
     ```
-    La aplicación estará disponible en `http://localhost:3000`.
-
-### Despliegue en Vercel (Demo)
-
-Para desplegar una versión de demostración:
-
-1.  Conecta tu repositorio a Vercel.
-2.  Configura las variables de entorno (`DATABASE_URL`, `AUTH_SECRET`, `GROQ_API_KEY`).
-3.  Asegúrate de usar una base de datos PostgreSQL (como Neon o Supabase).
-4.  El sistema configurará automáticamente la base de datos durante el proceso de construcción.
-
-## Estructura del Proyecto
-
-El código está organizado siguiendo las convenciones de Next.js:
-
--   `src/app`: Rutas y páginas de la aplicación.
--   `src/components`: Componentes de interfaz reutilizables.
--   `src/lib`: Utilidades, configuración de Prisma y funciones auxiliares.
--   `prisma`: Esquema de base de datos y scripts de inicialización.
-
-## Licencia
-
-Este proyecto es de uso privado y educativo.
+    Accede a `http://localhost:3000`.
