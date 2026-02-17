@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -30,7 +30,7 @@ model Project {
 model Document {
   id            String            @id @default(cuid())
   projectId     String
-  templateType  String            @default("FOC") // "FOC" | "GENERIC"
+  templateType  String            @default("FOC") // "FOC" | "CUSTOM"
   subject       String?           // Asignatura (e.g., "DAW")
   topic         String?           // Tema (e.g., "UML")
   sourceText    String
