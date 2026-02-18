@@ -1,4 +1,4 @@
-# IDraft — Generador Inteligente de Documentos Académicos
+AIDraft — Generador Inteligente de Documentos Académicos
 
 AIDraft es una aplicación web full-stack que automatiza la creación de documentos académicos (tareas, exámenes, trabajos) a partir de un enunciado en PDF o texto. Sube tu enunciado, selecciona una plantilla, y la IA genera las respuestas automáticamente. Edita, personaliza la portada, y exporta a Word (.docx) con un solo clic.
 
