@@ -1,7 +1,8 @@
 <div align="center">
 
 #  AIDraft
-## Generador Inteligente de Documentos Académicos
+Generador Inteligente de Documentos Académicos
+</div align="center">
 
 AIDraft es una aplicación web full-stack que automatiza la creación de documentos académicos (tareas, exámenes, trabajos) a partir de un enunciado en PDF o texto. Sube tu enunciado, selecciona una plantilla, y la IA genera las respuestas automáticamente. Edita, personaliza la portada, y exporta a Word (.docx) con un solo clic.
 
@@ -20,7 +21,7 @@ En el entorno educativo actual, los docentes dedican una cantidad significativa 
 5.  **Edición en Vivo**: El docente revisa el borrador generado en un editor de texto enriquecido, ajustando el contenido si es necesario.
 6.  **Exportación**: Con un solo clic, se descarga el documento final en formato Word (.docx), perfectamente maquetado y listo para entregar.
 
-## 🛠️ Stack Tecnológico
+🛠️ Stack Tecnológico
 
 -   **Frontend**: Next.js 16 (App Router), React, Tailwind CSS.
 -   **Backend**: API Routes (Serverless), NextAuth.js v5.
@@ -28,7 +29,7 @@ En el entorno educativo actual, los docentes dedican una cantidad significativa 
 -   **IA**: Integración con LLMs vía Groq Cloud.
 -   **Lenguaje**: TypeScript (100% tipado estricto).
 
-## 📂 Estructura del Proyecto
+ 📂 Estructura del Proyecto
 
 Arquitectura limpia y modular basada en `src`:
 
@@ -41,7 +42,7 @@ Arquitectura limpia y modular basada en `src`:
 /public         # Estáticos
 ```
 
-## 🗄️ Modelo de Datos
+🗄️ Modelo de Datos
 
 El sistema utiliza un modelo relacional eficiente gestionado por Prisma:
 
@@ -50,7 +51,7 @@ El sistema utiliza un modelo relacional eficiente gestionado por Prisma:
 -   **Document**: Núcleo de la aplicación. Almacena el texto fuente, las configuraciones, el estado del borrador y el contenido generado (JSON).
 -   **DocumentVersion**: Historial de cambios y versiones de los documentos.
 
-## 🚀 Instalación Gratuita
+Instalación Gratuita
 
 Puedes ejecutar este proyecto en tu máquina local para desarrollo o pruebas:
 
